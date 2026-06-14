@@ -396,6 +396,7 @@ async function runAnalisis(){
         const prompt3='BETMINES:\n'+betminesTexto+'\n\nFOREBET:\n'+forebetTexto+'\n\nCompara estos pronósticos y genera un veredicto por partido. Responde SOLO JSON sin texto extra: {"partidos":[{"partido":"A vs B","betmines":"Local","forebet":"Local 61%","veredicto":"LOCAL","confianza":82,"razon":"Ambos coinciden en Local"}]}';
 
         const texto3=await grokCall([{role:'user',content:prompt3}],1000);
+        console.log('GROK3:',texto3);
         let text=texto3.replace(/```json|```/g,'').trim();
         const s=text.indexOf('{'),e=text.lastIndexOf('}');
         if(s>=0&&e>=0)text=text.slice(s,e+1);
