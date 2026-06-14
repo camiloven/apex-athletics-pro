@@ -351,7 +351,7 @@ async function runAnalisis(){
     const result=document.getElementById('analisisResult');
     if(!betminesImgs.length&&!forebetImgs.length){result.innerHTML='<p class="text-red-400 text-center">Sube al menos una captura</p>';return;}
     result.innerHTML=`<div class="flex flex-col items-center justify-center mt-8 gap-4"><div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400">Leyendo imágenes con IA...</p><p class="text-zinc-600 text-xs">Esto puede tomar 15-30 segundos</p></div>`;
-    const groqKey=localStorage.getItem('groqKey')||'';
+    const groqKey=localStorage.getItem('groqKey')||'';const grokKey=localStorage.getItem('grokKey')||'';
     const sport=currentSport||'soccer';
     const excelSummary=(allData[sport]||[]).slice(0,20).map((r,i)=>{const h=pct(r['1x2_h']),d=pct(r['1x2_d']||0),a=pct(r['1x2_a']);return(i+1)+'. '+r.home+' vs '+r.away+' → Local:'+h+'% Empate:'+d+'% Visita:'+a+'%';}).join('\n');
     const content=[];
