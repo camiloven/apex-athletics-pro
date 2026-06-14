@@ -328,17 +328,23 @@ async function runAnalisis(){
             const h=pct(r['1x2_h']),d=pct(r['1x2_d']||0),a=pct(r['1x2_a']);
             return(i+1)+'. '+r.home+' vs '+r.away+' L:'+h+'% E:'+d+'% V:'+a+'%';
         }).join('\n');
-        const content=[];
-        content.push({type:'text',text:'Analiza estas capturas de pronósticos deportivos (Betmines y/o Forebet). Extrae cada partido y su predicción. Luego cruza con estos datos del Excel:\n'+excelData+'\n\nResponde SOLO con este JSON exacto (sin texto adicional):\n{"partidos":[{"partido":"Local vs Visita","excel":"L58% E25% V17%","betmines":"Local","forebet":"Local 61%","veredicto":"LOCAL","confianza":82,"razon":"Todos coinciden en Local"}]}'});
-        const allImgs=[...betminesImgs.slice(0,2),...forebetImgs.slice(0,2)];
-        allImgs.forEach(img=>content.push({type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}));
-        const resp=await fetch('https://api.x.ai/v1/chat/completions',{
-            method:'POST',
-            headers:{'Content-Type':'application/json','Authorization':'Bearer '+grokKey},
-            body:JSON.stringify({model:'grok-2-vision-latest',max_tokens:3000,messages:[{role:'user',content}]})
-        });
-        const json=await resp.json();
-        let text=(json.choices?.[0]?.message?.content||'').replace(/```json|```/g,'').trim();
+        // Paso 1: extraer texto de imagenes
+        let textoExtraido='';
+        const allImgs=[...betminesImgs.slice(0,1).map(i=>({i,s:'BETMINES'})),...forebetImgs.slice(0,1).map(i=>({i,s:'FOREBET'}))];
+        for(const item of allImgs){
+            const r1=await fetch('https://api.x.ai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+grokKey},body:JSON.stringify({model:'grok-2-vision-latest',max_tokens:600,messages:[{role:'user',content:[{type:'text',text:'Lista los partidos de '+item.s+'. Formato corto: Equipo1 vs Equipo2: RESULTADO'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+item.i}}]}]})});
+            const j1=await r1.json();
+            textoExtraido+=item.s+': '+(j1.choices?.[0]?.message?.content||'')+'\n';
+        }
+        // Paso 2: generar JSON
+        const r2=await fetch('https://api.x.ai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+grokKey},body:JSON.stringify({model:'grok-3-latest',max_tokens:2000,messages:[{role:'user',content:'Pronósticos extraídos:
+'+textoExtraido+'
+Excel:
+'+excelData+'
+Responde SOLO JSON sin texto extra:
+{"partidos":[{"partido":"A vs B","excel":"L58%","betmines":"Local","forebet":"Local","veredicto":"LOCAL","confianza":80,"razon":"coinciden"}]}'}]})});
+        const j2=await r2.json();
+        let text=(j2.choices?.[0]?.message?.content||'').replace(/```json|```/g,'').trim();
         const s=text.indexOf('{'),e=text.lastIndexOf('}');
         if(s>=0&&e>=0)text=text.slice(s,e+1);
         const data=JSON.parse(text);
