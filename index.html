@@ -60,7 +60,7 @@
             <button onclick="switchView('pronos')" id="navPronos" class="nav-tab active text-yellow-400">📋 Pronos</button>
             <button onclick="switchView('resultados')" id="navResultados" class="nav-tab text-zinc-400">🔍 Resultados</button>
             <button onclick="switchView('analisis')" id="navAnalisis" class="nav-tab text-zinc-400">🎯 Análisis</button>
-            <button onclick="switchView('fuentes')" id="navFuentes" class="nav-tab text-zinc-400">🔗 Fuentes</button>
+            <button onclick="switchView('fuentes')" id="navFuentes" class="nav-tab text-zinc-400">🔗 Fuentes</button><button onclick="switchView('config')" id="navConfig" class="nav-tab text-zinc-400">⚙️ Config</button>
         </div>
     </div>
 </div>
@@ -177,7 +177,7 @@ function switchView(view){
     if(view==='pronos'){sportTabsEl.style.display='';renderPronos(currentSport,allData[currentSport]||[]);}
     else if(view==='resultados'){sportTabsEl.style.display='';renderResultados(currentSport);}
     else if(view==='analisis'){sportTabsEl.style.display='none';renderAnalisis();}
-    else if(view==='fuentes'){sportTabsEl.style.display='none';renderFuentes();}
+    else if(view==='fuentes'){sportTabsEl.style.display='none';renderFuentes();}else if(view==='config'){sportTabsEl.style.display='none';renderConfig();}
     window.scrollTo(0,0);
 }
 function pct(val){return Math.round((parseFloat(val)||0)*100);}
@@ -280,6 +280,36 @@ function renderResultadosUI(sport,data,resultados){
     const total=aciertos+errores;const pct_ac=total>0?Math.round(aciertos/total*100):0;
     wrap.innerHTML=`<div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-yellow-400 font-bold text-center mb-3">📊 Resumen ${sport.charAt(0).toUpperCase()+sport.slice(1)}</p><div class="grid grid-cols-3 gap-3 mb-3"><div class="text-center bg-green-500/10 rounded-xl p-3 border border-green-500/30"><div class="text-green-400 text-2xl font-bold">${aciertos}</div><div class="text-xs text-zinc-400">✅ Aciertos</div></div><div class="text-center bg-red-500/10 rounded-xl p-3 border border-red-500/30"><div class="text-red-400 text-2xl font-bold">${errores}</div><div class="text-xs text-zinc-400">❌ Errores</div></div><div class="text-center bg-zinc-800 rounded-xl p-3"><div class="text-zinc-300 text-2xl font-bold">${pendientes}</div><div class="text-xs text-zinc-400">⏳ Pendientes</div></div></div>${total>0?`<div class="bg-zinc-800 rounded-full h-3 overflow-hidden"><div class="h-full bg-green-500 rounded-full" style="width:${pct_ac}%"></div></div><p class="text-center text-sm mt-2 font-bold text-green-400">${pct_ac}% de acierto</p>`:''}</div><button onclick="resultsCache={}; renderResultados('${sport}')" class="w-full py-3 bg-zinc-800 text-yellow-400 rounded-2xl text-sm font-bold mb-4">🔄 Actualizar resultados</button>${cards}`;
     container.appendChild(wrap);
+}
+function renderConfig(){
+    document.getElementById('mainContent').innerHTML=`<div class="p-4">
+        <h2 class="text-xl font-bold text-yellow-400 mb-4">⚙️ Configuración</h2>
+        <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4">
+            <div>
+                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p>
+                <input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}"
+                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            </div>
+            <div>
+                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROK xAI KEY</p>
+                <input type="password" id="inputGrok" placeholder="xai-..." value="${localStorage.getItem('grokKey')||''}"
+                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            </div>
+            <div>
+                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 API-SPORTS KEY</p>
+                <input type="password" id="inputSports" placeholder="tu clave..." value="${localStorage.getItem('sportsKey')||''}"
+                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            </div>
+        </div>
+        <button onclick="saveConfig()" class="w-full py-5 bg-yellow-400 text-black font-bold rounded-3xl text-xl">💾 Guardar</button>
+    </div>`;
+}
+function saveConfig(){
+    localStorage.setItem('groqKey', document.getElementById('inputGroq').value.trim());
+    localStorage.setItem('grokKey', document.getElementById('inputGrok').value.trim());
+    localStorage.setItem('sportsKey', document.getElementById('inputSports').value.trim());
+    alert('✅ Claves guardadas');
+    switchView('pronos');
 }
 function renderAnalisis(){
     document.getElementById('mainContent').innerHTML=`<div class="p-4">
