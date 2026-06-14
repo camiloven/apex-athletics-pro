@@ -359,7 +359,7 @@ async function runAnalisis(){
     if(forebetImgs.length){content.push({type:'text',text:'Capturas de FOREBET — extrae pronósticos de cada partido:'});forebetImgs.forEach(img=>content.push({type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}));}
     content.push({type:'text',text:`Pronósticos del Excel:\n${excelSummary}\n\nCruza los 3 pronósticos y genera un veredicto final por partido. Responde SOLO en JSON:\n{"partidos":[{"partido":"Local vs Visita","excel":"Local 58%","betmines":"Local","forebet":"Local 61%","veredicto":"LOCAL","confianza":82,"razon":"Todos coinciden en Local"}]}`});
     try{
-        const resp=await fetch('https://api.x.ai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+grokKey},body:JSON.stringify({model:'grok-2-vision-latest',max_tokens:2000,messages:[{role:'user',content}]})});
+        const resp=await fetch('https://api.x.ai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+grokKey},body:JSON.stringify({model:'grok-2-vision-latest',max_tokens:4000,messages:[{role:'user',content}]})});
         const json=await resp.json();
         const text=(json.choices?.[0]?.message?.content||'').replace(/```json|```/g,'').trim();
         const data=JSON.parse(text);
