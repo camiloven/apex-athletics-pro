@@ -19,7 +19,7 @@
         .tabs-scroll::-webkit-scrollbar { display: none; }
         .day-header { background: linear-gradient(90deg,#1c1c1f 0%,#27272a 100%); border-left: 3px solid #eab308; }
         .stat-pill { border-radius: 12px; padding: 8px 4px; text-align: center; }
-        .nav-tab { flex: 1; padding: 10px 2px; text-align: center; font-size: 10px; font-weight: bold; border-top: 2px solid transparent; transition: all 0.2s; }
+        .nav-tab { flex: 1; padding: 8px 2px; text-align: center; font-size: 9px; font-weight: bold; border-top: 2px solid transparent; transition: all 0.2s; }
         .nav-tab.active { border-top-color: #eab308; color: #eab308; }
         .league-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: bold; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -39,11 +39,10 @@
     <div class="text-center max-w-md w-full">
         <div class="text-5xl mb-6">🔐</div>
         <h2 class="text-3xl font-bold mb-2">Ingrese la Clave</h2>
-        <p class="text-zinc-500 text-sm mb-6">Acceso restringido</p>
         <input type="password" id="passwordInput" placeholder="Clave de seguridad"
                class="w-full bg-zinc-800 text-white px-6 py-4 rounded-2xl text-xl mb-4 focus:outline-none focus:ring-2 focus:ring-yellow-400"
                onkeydown="if(event.key==='Enter') checkPassword()">
-        <button onclick="checkPassword()" class="w-full py-5 bg-yellow-400 text-black font-bold rounded-3xl text-xl hover:bg-amber-300">VERIFICAR</button>
+        <button onclick="checkPassword()" class="w-full py-5 bg-yellow-400 text-black font-bold rounded-3xl text-xl">VERIFICAR</button>
     </div>
 </div>
 <div id="appScreen" class="hidden min-h-screen bg-zinc-950 flex flex-col">
@@ -58,9 +57,10 @@
     <div class="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50">
         <div class="flex">
             <button onclick="switchView('pronos')" id="navPronos" class="nav-tab active text-yellow-400">📋 Pronos</button>
-            <button onclick="switchView('resultados')" id="navResultados" class="nav-tab text-zinc-400">🔍 Resultados</button>
+            <button onclick="switchView('resultados')" id="navResultados" class="nav-tab text-zinc-400">🔍 Results</button>
             <button onclick="switchView('analisis')" id="navAnalisis" class="nav-tab text-zinc-400">🎯 Análisis</button>
-            <button onclick="switchView('fuentes')" id="navFuentes" class="nav-tab text-zinc-400">🔗 Fuentes</button><button onclick="switchView('config')" id="navConfig" class="nav-tab text-zinc-400">⚙️ Config</button>
+            <button onclick="switchView('fuentes')" id="navFuentes" class="nav-tab text-zinc-400">🔗 Fuentes</button>
+            <button onclick="switchView('config')" id="navConfig" class="nav-tab text-zinc-400">⚙️ Config</button>
         </div>
     </div>
 </div>
@@ -169,7 +169,7 @@ function switchSport(sport){
 }
 function switchView(view){
     currentView=view;
-    ['pronos','resultados','analisis','fuentes'].forEach(v=>{
+    ['pronos','resultados','analisis','fuentes','config'].forEach(v=>{
         const btn=document.getElementById('nav'+v.charAt(0).toUpperCase()+v.slice(1));
         if(btn){btn.classList.toggle('active',v===view);btn.classList.toggle('text-yellow-400',v===view);btn.classList.toggle('text-zinc-400',v!==view);}
     });
@@ -177,7 +177,8 @@ function switchView(view){
     if(view==='pronos'){sportTabsEl.style.display='';renderPronos(currentSport,allData[currentSport]||[]);}
     else if(view==='resultados'){sportTabsEl.style.display='';renderResultados(currentSport);}
     else if(view==='analisis'){sportTabsEl.style.display='none';renderAnalisis();}
-    else if(view==='fuentes'){sportTabsEl.style.display='none';renderFuentes();}else if(view==='config'){sportTabsEl.style.display='none';renderConfig();}
+    else if(view==='fuentes'){sportTabsEl.style.display='none';renderFuentes();}
+    else if(view==='config'){sportTabsEl.style.display='none';renderConfig();}
     window.scrollTo(0,0);
 }
 function pct(val){return Math.round((parseFloat(val)||0)*100);}
@@ -238,29 +239,27 @@ function buildCard(sport,row,leagueColor){
     return div;
 }
 async function fetchRealResults(sport,dates){
+    const sportsKey=localStorage.getItem('sportsKey')||'';
     const endpoints={soccer:'https://v3.football.api-sports.io/fixtures?date=',basketball:'https://v1.basketball.api-sports.io/games?date=',hockey:'https://v1.hockey.api-sports.io/games?date=',volleyball:'https://v1.volleyball.api-sports.io/games?date=',handball:'https://v1.handball.api-sports.io/games?date=',tennis:'https://v1.tennis.api-sports.io/games?date='};
     const url=(endpoints[sport]||endpoints.soccer)+dates[0];
-    try{const r=await fetch(url,{headers:{'x-apisports-key':API_SPORTS_KEY}});const j=await r.json();return j.response||[];}catch(e){return[];}
-}
-function matchScore(sport,apiGame){
-    try{if(sport==='soccer'){const g=apiGame.goals;if(g&&g.home!==null&&g.away!==null)return g.home+'-'+g.away;}else{const s=apiGame.scores;if(s&&s.home&&s.away)return s.home.total+'-'+s.away.total;}}catch(e){}return null;
+    try{const r=await fetch(url,{headers:{'x-apisports-key':sportsKey}});const j=await r.json();return j.response||[];}catch(e){return[];}
 }
 function normalize(str){return String(str||'').toLowerCase().replace(/[^a-z0-9]/g,'').trim();}
-function findMatch(row,apiGames,sport){
+function findMatch(row,apiGames){
     const h=normalize(row.home),a=normalize(row.away);
-    for(const g of apiGames){let gh=normalize(g.teams?.home?.name),ga=normalize(g.teams?.away?.name);if((gh.includes(h)||h.includes(gh))&&(ga.includes(a)||a.includes(ga)))return g;}
+    for(const g of apiGames){const gh=normalize(g.teams?.home?.name||''),ga=normalize(g.teams?.away?.name||'');if((gh.includes(h)||h.includes(gh))&&(ga.includes(a)||a.includes(ga)))return g;}
     return null;
 }
 async function renderResultados(sport){
     const container=document.getElementById('mainContent');
     const data=allData[sport]||[];
-    if(!data.length){container.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin datos cargados</p>';return;}
-    container.innerHTML=`<div class="flex flex-col items-center justify-center mt-24 gap-4"><div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400">Buscando resultados reales...</p></div>`;
+    if(!data.length){container.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin datos</p>';return;}
+    container.innerHTML=`<div class="flex flex-col items-center justify-center mt-24 gap-4"><div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400">Buscando resultados...</p></div>`;
     const cacheKey=sport+'_'+(data[0]?.date||'');
     if(resultsCache[cacheKey]){renderResultadosUI(sport,data,resultsCache[cacheKey]);return;}
     const dates=[...new Set(data.slice(0,20).map(r=>{const m=String(r.date||'').match(/(\d+)\.(\d+)\.(\d{4})/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):'';}).filter(Boolean))];
     const apiGames=await fetchRealResults(sport,dates);
-    const resultados=data.slice(0,20).map(row=>{const g=findMatch(row,apiGames,sport);if(!g)return{marcador:'?',estado:'pendiente'};const score=matchScore(sport,g);const finished=g.fixture?.status?.short==='FT'||g.status?.short==='FT'||g.status?.long==='Finished';return{marcador:score||'?',estado:finished&&score?'finalizado':'pendiente'};});
+    const resultados=data.slice(0,20).map(row=>{const g=findMatch(row,apiGames);if(!g)return{marcador:'?',estado:'pendiente'};const s=sport==='soccer'?g.goals:g.scores;const score=sport==='soccer'?(s?.home!==null&&s?.away!==null?s.home+'-'+s.away:null):(s?.home?.total!==undefined?s.home.total+'-'+s.away.total:null);const finished=g.fixture?.status?.short==='FT'||g.status?.short==='FT';return{marcador:score||'?',estado:finished&&score?'finalizado':'pendiente'};});
     resultsCache[cacheKey]=resultados;
     renderResultadosUI(sport,data,resultados);
 }
@@ -278,38 +277,8 @@ function renderResultadosUI(sport,data,resultados){
         return `<div class="card bg-zinc-900 rounded-2xl p-4 mb-3 border ${acierto===true?'border-green-500':acierto===false?'border-red-500':'border-zinc-800'}"><div class="flex justify-between items-start mb-2"><div class="flex-1 pr-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p><p class="text-xs mt-0.5" style="color:${color}">${row.league||''}</p></div><div class="text-right flex-shrink-0">${timeStr?`<p class="text-xs text-zinc-500">${timeStr}</p>`:''}<p class="text-2xl font-bold mt-1 ${finalizado?'text-white':'text-zinc-600'}">${res.marcador}</p></div></div><div class="flex justify-between items-center mt-2 pt-2 border-t border-zinc-800"><span class="text-xs text-zinc-500">${pronostico}</span><span class="text-lg">${acierto===true?'✅':acierto===false?'❌':'⏳'}</span></div></div>`;
     }).join('');
     const total=aciertos+errores;const pct_ac=total>0?Math.round(aciertos/total*100):0;
-    wrap.innerHTML=`<div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-yellow-400 font-bold text-center mb-3">📊 Resumen ${sport.charAt(0).toUpperCase()+sport.slice(1)}</p><div class="grid grid-cols-3 gap-3 mb-3"><div class="text-center bg-green-500/10 rounded-xl p-3 border border-green-500/30"><div class="text-green-400 text-2xl font-bold">${aciertos}</div><div class="text-xs text-zinc-400">✅ Aciertos</div></div><div class="text-center bg-red-500/10 rounded-xl p-3 border border-red-500/30"><div class="text-red-400 text-2xl font-bold">${errores}</div><div class="text-xs text-zinc-400">❌ Errores</div></div><div class="text-center bg-zinc-800 rounded-xl p-3"><div class="text-zinc-300 text-2xl font-bold">${pendientes}</div><div class="text-xs text-zinc-400">⏳ Pendientes</div></div></div>${total>0?`<div class="bg-zinc-800 rounded-full h-3 overflow-hidden"><div class="h-full bg-green-500 rounded-full" style="width:${pct_ac}%"></div></div><p class="text-center text-sm mt-2 font-bold text-green-400">${pct_ac}% de acierto</p>`:''}</div><button onclick="resultsCache={}; renderResultados('${sport}')" class="w-full py-3 bg-zinc-800 text-yellow-400 rounded-2xl text-sm font-bold mb-4">🔄 Actualizar resultados</button>${cards}`;
+    wrap.innerHTML=`<div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-yellow-400 font-bold text-center mb-3">📊 Resumen</p><div class="grid grid-cols-3 gap-3 mb-3"><div class="text-center bg-green-500/10 rounded-xl p-3 border border-green-500/30"><div class="text-green-400 text-2xl font-bold">${aciertos}</div><div class="text-xs text-zinc-400">✅ Aciertos</div></div><div class="text-center bg-red-500/10 rounded-xl p-3 border border-red-500/30"><div class="text-red-400 text-2xl font-bold">${errores}</div><div class="text-xs text-zinc-400">❌ Errores</div></div><div class="text-center bg-zinc-800 rounded-xl p-3"><div class="text-zinc-300 text-2xl font-bold">${pendientes}</div><div class="text-xs text-zinc-400">⏳ Pendientes</div></div></div>${total>0?`<div class="bg-zinc-800 rounded-full h-3 overflow-hidden"><div class="h-full bg-green-500 rounded-full" style="width:${pct_ac}%"></div></div><p class="text-center text-sm mt-2 font-bold text-green-400">${pct_ac}% de acierto</p>`:''}</div><button onclick="resultsCache={}; renderResultados('${sport}')" class="w-full py-3 bg-zinc-800 text-yellow-400 rounded-2xl text-sm font-bold mb-4">🔄 Actualizar</button>${cards}`;
     container.appendChild(wrap);
-}
-function renderConfig(){
-    document.getElementById('mainContent').innerHTML=`<div class="p-4">
-        <h2 class="text-xl font-bold text-yellow-400 mb-4">⚙️ Configuración</h2>
-        <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4">
-            <div>
-                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p>
-                <input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}"
-                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
-            </div>
-            <div>
-                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROK xAI KEY</p>
-                <input type="password" id="inputGrok" placeholder="xai-..." value="${localStorage.getItem('grokKey')||''}"
-                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
-            </div>
-            <div>
-                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 API-SPORTS KEY</p>
-                <input type="password" id="inputSports" placeholder="tu clave..." value="${localStorage.getItem('sportsKey')||''}"
-                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
-            </div>
-        </div>
-        <button onclick="saveConfig()" class="w-full py-5 bg-yellow-400 text-black font-bold rounded-3xl text-xl">💾 Guardar</button>
-    </div>`;
-}
-function saveConfig(){
-    localStorage.setItem('groqKey', document.getElementById('inputGroq').value.trim());
-    localStorage.setItem('grokKey', document.getElementById('inputGrok').value.trim());
-    localStorage.setItem('sportsKey', document.getElementById('inputSports').value.trim());
-    alert('✅ Claves guardadas');
-    switchView('pronos');
 }
 function renderAnalisis(){
     document.getElementById('mainContent').innerHTML=`<div class="p-4">
@@ -319,14 +288,14 @@ function renderAnalisis(){
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <p class="text-xs text-zinc-500 mb-2 font-bold">📸 BETMINES</p>
-                    <label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700 border border-zinc-700">
+                    <label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700">
                         ${betminesImgs.length>0?betminesImgs.length+' foto(s) ✅':'Seleccionar'}
                         <input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'betmines')">
                     </label>
                 </div>
                 <div>
                     <p class="text-xs text-zinc-500 mb-2 font-bold">📸 FOREBET</p>
-                    <label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700 border border-zinc-700">
+                    <label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700">
                         ${forebetImgs.length>0?forebetImgs.length+' foto(s) ✅':'Seleccionar'}
                         <input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'forebet')">
                     </label>
@@ -350,21 +319,33 @@ function loadImgs(event,source){
 async function runAnalisis(){
     const result=document.getElementById('analisisResult');
     if(!betminesImgs.length&&!forebetImgs.length){result.innerHTML='<p class="text-red-400 text-center">Sube al menos una captura</p>';return;}
-    result.innerHTML=`<div class="flex flex-col items-center justify-center mt-8 gap-4"><div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400">Leyendo imágenes con IA...</p><p class="text-zinc-600 text-xs">Esto puede tomar 15-30 segundos</p></div>`;
-    const groqKey=localStorage.getItem('groqKey')||'';const grokKey=localStorage.getItem('grokKey')||'';
-    const sport=currentSport||'soccer';
-    const excelSummary=(allData[sport]||[]).slice(0,20).map((r,i)=>{const h=pct(r['1x2_h']),d=pct(r['1x2_d']||0),a=pct(r['1x2_a']);return(i+1)+'. '+r.home+' vs '+r.away+' → Local:'+h+'% Empate:'+d+'% Visita:'+a+'%';}).join('\n');
-    const content=[];
-    if(betminesImgs.length){content.push({type:'text',text:'Capturas de BETMINES — extrae pronósticos de cada partido:'});betminesImgs.forEach(img=>content.push({type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}));}
-    if(forebetImgs.length){content.push({type:'text',text:'Capturas de FOREBET — extrae pronósticos de cada partido:'});forebetImgs.forEach(img=>content.push({type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}));}
-    content.push({type:'text',text:`Pronósticos del Excel:\n${excelSummary}\n\nCruza los 3 pronósticos y genera un veredicto final por partido. Responde SOLO en JSON:\n{"partidos":[{"partido":"Local vs Visita","excel":"Local 58%","betmines":"Local","forebet":"Local 61%","veredicto":"LOCAL","confianza":82,"razon":"Todos coinciden en Local"}]}`});
+    const grokKey=localStorage.getItem('grokKey')||'';
+    if(!grokKey){result.innerHTML='<p class="text-red-400 text-center">Configura tu clave Grok en ⚙️ Config</p>';return;}
+    result.innerHTML=`<div class="flex flex-col items-center justify-center mt-8 gap-4"><div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400">Leyendo imágenes con Grok...</p></div>`;
     try{
-        const resp=await fetch('https://api.x.ai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+grokKey},body:JSON.stringify({model:'grok-2-vision-latest',max_tokens:4000,messages:[{role:'user',content}]})});
+        const sport=currentSport||'soccer';
+        const excelData=(allData[sport]||[]).slice(0,15).map((r,i)=>{
+            const h=pct(r['1x2_h']),d=pct(r['1x2_d']||0),a=pct(r['1x2_a']);
+            return(i+1)+'. '+r.home+' vs '+r.away+' L:'+h+'% E:'+d+'% V:'+a+'%';
+        }).join('\n');
+        const content=[];
+        content.push({type:'text',text:'Analiza estas capturas de pronósticos deportivos (Betmines y/o Forebet). Extrae cada partido y su predicción. Luego cruza con estos datos del Excel:\n'+excelData+'\n\nResponde SOLO con este JSON exacto (sin texto adicional):\n{"partidos":[{"partido":"Local vs Visita","excel":"L58% E25% V17%","betmines":"Local","forebet":"Local 61%","veredicto":"LOCAL","confianza":82,"razon":"Todos coinciden en Local"}]}'});
+        const allImgs=[...betminesImgs.slice(0,2),...forebetImgs.slice(0,2)];
+        allImgs.forEach(img=>content.push({type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}));
+        const resp=await fetch('https://api.x.ai/v1/chat/completions',{
+            method:'POST',
+            headers:{'Content-Type':'application/json','Authorization':'Bearer '+grokKey},
+            body:JSON.stringify({model:'grok-2-vision-latest',max_tokens:3000,messages:[{role:'user',content}]})
+        });
         const json=await resp.json();
-        const text=(json.choices?.[0]?.message?.content||'').replace(/```json|```/g,'').trim();
+        let text=(json.choices?.[0]?.message?.content||'').replace(/```json|```/g,'').trim();
+        const s=text.indexOf('{'),e=text.lastIndexOf('}');
+        if(s>=0&&e>=0)text=text.slice(s,e+1);
         const data=JSON.parse(text);
         renderAnalisisResult(data.partidos||[]);
-    }catch(e){result.innerHTML=`<div class="text-center mt-8"><div class="text-4xl mb-4">⚠️</div><p class="text-zinc-400 mb-2">Error al procesar</p><p class="text-zinc-600 text-xs">${e.message}</p><button onclick="runAnalisis()" class="mt-4 bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;}
+    }catch(e){
+        result.innerHTML=`<div class="text-center mt-8"><div class="text-4xl mb-4">⚠️</div><p class="text-zinc-400 mb-2">Error al procesar</p><p class="text-zinc-600 text-xs">${e.message}</p><button onclick="runAnalisis()" class="mt-4 bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;
+    }
 }
 function renderAnalisisResult(partidos){
     const result=document.getElementById('analisisResult');
@@ -382,7 +363,38 @@ function renderAnalisisResult(partidos){
 function renderFuentes(){
     document.getElementById('mainContent').innerHTML=`<div class="p-4"><p class="text-zinc-500 text-xs text-center mb-4 uppercase tracking-widest font-bold">Otras Fuentes</p><div class="space-y-3"><a href="https://betmines.com" target="_blank" class="flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><span class="text-2xl">⛏️</span><div><p class="font-bold">Betmines</p><p class="text-zinc-500 text-xs">Estadísticas y pronósticos</p></div><span class="ml-auto text-zinc-600">→</span></a><a href="https://forebet.com" target="_blank" class="flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><span class="text-2xl">📊</span><div><p class="font-bold">Forebet</p><p class="text-zinc-500 text-xs">Predicciones matemáticas</p></div><span class="ml-auto text-zinc-600">→</span></a><a href="https://adamchoi.co.uk" target="_blank" class="flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><span class="text-2xl">🔢</span><div><p class="font-bold">AdamChoi</p><p class="text-zinc-500 text-xs">Datos históricos</p></div><span class="ml-auto text-zinc-600">→</span></a><a href="https://sofascore.com" target="_blank" class="flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><span class="text-2xl">⚡</span><div><p class="font-bold">SofaScore</p><p class="text-zinc-500 text-xs">Resultados en vivo</p></div><span class="ml-auto text-zinc-600">→</span></a></div></div>`;
 }
-window.onload=()=>{localStorage.setItem("groqKey","41c3641633091197d7e47be1c2e1d7e4");
+function renderConfig(){
+    document.getElementById('mainContent').innerHTML=`<div class="p-4">
+        <h2 class="text-xl font-bold text-yellow-400 mb-4">⚙️ Configuración</h2>
+        <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4">
+            <div>
+                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROK xAI KEY (para análisis de imágenes)</p>
+                <input type="password" id="inputGrok" placeholder="xai-..." value="${localStorage.getItem('grokKey')||''}"
+                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            </div>
+            <div>
+                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY (para resultados IA)</p>
+                <input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}"
+                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            </div>
+            <div>
+                <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 API-SPORTS KEY (para resultados reales)</p>
+                <input type="password" id="inputSports" placeholder="tu clave..." value="${localStorage.getItem('sportsKey')||''}"
+                    class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            </div>
+        </div>
+        <button onclick="saveConfig()" class="w-full py-5 bg-yellow-400 text-black font-bold rounded-3xl text-xl">💾 Guardar Claves</button>
+        <p class="text-zinc-600 text-xs text-center mt-3">Las claves se guardan solo en tu dispositivo</p>
+    </div>`;
+}
+function saveConfig(){
+    localStorage.setItem('grokKey',document.getElementById('inputGrok').value.trim());
+    localStorage.setItem('groqKey',document.getElementById('inputGroq').value.trim());
+    localStorage.setItem('sportsKey',document.getElementById('inputSports').value.trim());
+    alert('✅ Claves guardadas correctamente');
+    switchView('pronos');
+}
+window.onload=()=>{
     try{const s=localStorage.getItem('apexData');if(s)allData=JSON.parse(s);}catch(e){allData={};}
 };
 </script>
