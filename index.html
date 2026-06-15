@@ -114,7 +114,7 @@ async function runAnalisis(){
         result.innerHTML=`<div class="flex flex-col items-center gap-3 mt-8"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 3: Generando veredictos...</p></div>`;
         const prompt='BETMINES:\n'+betTxt+'\n\nFOREBET:\n'+foreTxt+'\n\nPor cada partido escribe exactamente este formato (una linea por partido):\nPartido: Equipo1 vs Equipo2 | Betmines: LOCAL | Forebet: LOCAL 65% | Veredicto: LOCAL | Confianza: 80 | Razon: ambos coinciden\n\nSolo las lineas, sin texto extra.';
         const resp=await grokText(prompt);
-        const lineas=resp.split('\n').filter(l=>l.includes('Partido:')||l.includes('partido:')||l.includes('vs'));
+        document.getElementById('analisisResult').innerHTML='<p class="text-yellow-400 text-xs p-4">Respuesta de Grok:</p><pre class="text-xs text-zinc-400 px-4 overflow-auto whitespace-pre-wrap">'+resp.slice(0,800)+'</pre>';return;
         const partidos=lineas.map(l=>{
             const get=(key)=>{const i=l.indexOf(key);if(i<0)return'—';const v=l.slice(i+key.length);const j=v.indexOf(' | ');return(j>=0?v.slice(0,j):v).trim();};
             const verd=get('Veredicto:')||get('veredicto:')||'';const conf=parseInt(get('Confianza:')||get('confianza:'))||70;return{partido:get('Partido:')||get('partido:')||l.split('|')[0].trim(),betmines:get('Betmines:')||get('betmines:'),forebet:get('Forebet:')||get('forebet:'),veredicto:verd.toUpperCase()||'LOCAL',confianza:conf,razon:get('Razon:')||get('razon:')};
