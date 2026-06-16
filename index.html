@@ -96,18 +96,44 @@ async function groqCall(content,maxTokens){const key=localStorage.getItem('groqK
 function renderAnalisis(){document.getElementById('mainContent').innerHTML=`<div class="p-4"><h2 class="text-xl font-bold text-yellow-400 mb-4">🎯 Análisis Combinado</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-sm text-zinc-400 mb-3">Sube capturas de pronósticos del día</p><div class="grid grid-cols-2 gap-3"><div><p class="text-xs text-zinc-500 mb-2 font-bold">📸 BETMINES</p><label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700">${betminesImgs.length>0?betminesImgs.length+' foto(s) ✅':'Seleccionar'}<input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'betmines')"></label></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">📸 FOREBET</p><label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700">${forebetImgs.length>0?forebetImgs.length+' foto(s) ✅':'Seleccionar'}<input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'forebet')"></label></div></div></div><button onclick="runAnalisis()" class="w-full py-5 bg-yellow-400 text-black font-bold rounded-3xl text-xl mb-4">🤖 Generar Análisis</button><div id="analisisResult"></div></div>`;}
 function loadImgs(event,source){const files=Array.from(event.target.files);const arr=source==='betmines'?betminesImgs:forebetImgs;arr.length=0;let loaded=0;files.forEach(file=>{const reader=new FileReader();reader.onload=e=>{arr.push(e.target.result.split(',')[1]);loaded++;if(loaded===files.length)renderAnalisis();};reader.readAsDataURL(file);});}
 async function runAnalisis(){
-    const result=document.getElementById('analisisResult');
-    if(!betminesImgs.length&&!forebetImgs.length){result.innerHTML='<p class="text-red-400 text-center">Sube al menos una captura</p>';return;}
-    if(!localStorage.getItem('groqKey')){result.innerHTML='<p class="text-red-400 text-center">Configura tu clave Groq en ⚙️ Config</p>';return;}
-    try{
-        result.innerHTML=`<div class="flex flex-col items-center gap-3 mt-8"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 1: Leyendo Betmines...</p></div>`;
-        let betTxt='Sin datos';
-        if(betminesImgs.length){
-            const results=[];
+        const result=document.getElementById('analisisResult');
+        if(!betminesImgs.length&&!forebetImgs.length){result.innerHTML='<p class="text-red-400 text-center">Sube al menos una captura</p>';return;}
+        if(!localStorage.getItem('geminiKey')){result.innerHTML='<p class="text-red-400 text-center">Configura tu clave Gemini en ⚙️ Config</p>';return;}
+        try{
+            result.innerHTML=`<div class="flex flex-col items-center gap-3 mt-8"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Analizando imágenes...</p></div>`;
+            const parts=[];
             for(const img of betminesImgs.slice(0,2)){
                 const base64=img.includes('base64,')?img.split('base64,')[1]:img;
-                results.push(await geminiCall(base64,'Lee esta imagen de BETMINES. Para cada partido que veas escribe EXACTAMENTE en este formato: Partido: EquipoLocal vs EquipoVisita | Betmines: PREDICCION. Una linea por partido. PREDICCION debe ser LOCAL, EMPATE o VISITA segun el numero que aparece (1=LOCAL, X=EMPATE, 2=VISITA). NO inventes nombres.'));
+                parts.push({inline_data:{mime_type:'image/jpeg',data:base64}});
             }
+            for(const img of forebetImgs.slice(0,2)){
+                const base64=img.includes('base64,')?img.split('base64,')[1]:img;
+                parts.push({inline_data:{mime_type:'image/jpeg',data:base64}});
+            }
+            parts.push({text:`Analiza estas imágenes de pronósticos deportivos (primeras son de BETMINES, siguientes de FOREBET).
+Para CADA partido que encuentres en las imágenes, escribe exactamente este formato (una linea por partido):
+Partido: EquipoLocal vs EquipoVisita | Betmines: PRED | Forebet: PRED PCT% | Veredicto: PRED | Confianza: NUM | Razon: texto
+
+Reglas:
+- PRED puede ser: LOCAL, EMPATE o VISITA
+- En Betmines: 1=LOCAL, X=EMPATE, 2=VISITA
+- En Forebet: usa el porcentaje mayor para determinar PRED
+- Confianza entre 50 y 95
+- Si ambos coinciden confianza alta (75-95), si difieren confianza media (50-65)
+- Veredicto en MAYUSCULAS
+- NO inventes equipos, solo los que ves claramente
+- Solo las lineas, sin texto extra`});
+            const key=localStorage.getItem('geminiKey');
+            const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts}]})});
+            const j=await r.json();
+            if(!j.candidates){result.innerHTML='<p class="text-red-400 text-center">Error Gemini: '+JSON.stringify(j).slice(0,100)+'</p>';return;}
+            const resp=j.candidates[0].content.parts[0].text;
+            const lineas=resp.split('\n').filter(l=>l.includes('Partido:'));
+            const get=(key,l)=>{const i=l.indexOf(key);if(i<0)return'';const v=l.slice(i+key.length);const j=v.indexOf(' | ');return(j>=0?v.slice(0,j):v).trim();};
+            const partidos=lineas.map(l=>({partido:get('Partido:',l),betmines:get('Betmines:',l),forebet:get('Forebet:',l),veredicto:get('Veredicto:',l).toUpperCase(),confianza:parseInt(get('Confianza:',l))||70,razon:get('Razon:',l)}));
+            renderAnalisisResult(partidos);
+        }catch(e){result.innerHTML=`<div class="text-center mt-8"><div class="text-4xl mb-3">⚠️</div><p class="text-zinc-400 mb-2">Error</p><p class="text-zinc-600 text-xs mb-4">${e.message}</p><button onclick="runAnalisis()" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;}
+}
             betTxt=results.join('\n');
         }
         result.innerHTML=`<div class="flex flex-col items-center gap-3 mt-8"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 2: Leyendo Forebet...</p></div>`;
