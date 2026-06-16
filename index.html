@@ -104,7 +104,7 @@ async function runAnalisis(){
         if(betminesImgs.length){
             const results=[];
             for(const img of betminesImgs.slice(0,2)){
-                const content=[{type:'text',text:'Eres un lector de pantalla experto. Extrae TODOS los partidos de esta imagen de BETMINES. Para cada partido escribe exactamente: NombreLocal vs NombreVisita: PREDICCION. Una linea por partido. PREDICCION puede ser LOCAL, EMPATE o VISITA. Solo las lineas, sin intro ni explicacion.'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}];
+                const content=[{type:'text',text:'Look at this image carefully. List ONLY the exact team names and predictions you can READ in the image. Do not invent or guess team names. Format: TeamA vs TeamB: PREDICTION. One line per match. PREDICTION is LOCAL, EMPATE or VISITA. Only lines you can confirm reading from the image.'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}];
                 results.push(await groqCall(content,400));
             }
             betTxt=results.join('\n');document.getElementById('analisisResult').innerHTML='<div style="background:#1a1a1a;padding:8px;font-size:9px;color:#ff0;white-space:pre-wrap">BETMINES RAW: '+betTxt+'</div>';
@@ -114,7 +114,7 @@ async function runAnalisis(){
         if(forebetImgs.length){
             const results=[];
             for(const img of forebetImgs.slice(0,2)){
-                const content=[{type:'text',text:'Eres un lector de pantalla experto. Extrae TODOS los partidos de esta imagen de FOREBET. Para cada partido escribe exactamente: NombreLocal vs NombreVisita: PREDICCION PORCENTAJE%. Una linea por partido. PREDICCION puede ser LOCAL, EMPATE o VISITA. Solo las lineas, sin intro ni explicacion.'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}];
+                const content=[{type:'text',text:'Look at this image carefully. List ONLY the exact team names and predictions you can READ in the image. Do not invent or guess team names. Format: TeamA vs TeamB: PREDICTION PERCENTAGE%. One line per match. PREDICTION is LOCAL, EMPATE or VISITA. Only lines you can confirm reading from the image.'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}];
                 results.push(await groqCall(content,400));
             }
             foreTxt=results.join('\n');
