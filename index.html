@@ -105,7 +105,7 @@ async function runAnalisis(){
         if(betminesImgs.length){
             const results=[];
             for(const img of betminesImgs.slice(0,2)){
-                const base64=img.replace(/^data:image\/[a-z]+;base64,/,'');
+                const base64=img.includes('base64,')?img.split('base64,')[1]:img;
                 results.push(await geminiCall(base64,'Lee esta imagen de BETMINES con cuidado. Lista SOLO los partidos que puedes leer claramente. Para cada partido escribe exactamente: EquipoLocal vs EquipoVisita: PREDICCION. Una linea por partido. PREDICCION debe ser LOCAL, EMPATE o VISITA. NO inventes nombres, solo escribe lo que ves claramente en la imagen.'));
             }
             betTxt=results.join('\n');document.getElementById('analisisResult').innerHTML='<div style="background:#111;padding:10px;font-size:11px;color:#ff0;white-space:pre-wrap;border-radius:8px">BETMINES RAW:\n'+betTxt+'</div>';return;
