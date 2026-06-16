@@ -107,7 +107,7 @@ async function runAnalisis(){
                 const content=[{type:'text',text:'Eres un lector de pantalla experto. Extrae TODOS los partidos de esta imagen de BETMINES. Para cada partido escribe exactamente: NombreLocal vs NombreVisita: PREDICCION. Una linea por partido. PREDICCION puede ser LOCAL, EMPATE o VISITA. Solo las lineas, sin intro ni explicacion.'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+img}}];
                 results.push(await groqCall(content,400));
             }
-            betTxt=results.join('\n');
+            betTxt=results.join('\n');document.getElementById('analisisResult').innerHTML='<div style="background:#1a1a1a;padding:8px;font-size:9px;color:#ff0;white-space:pre-wrap">BETMINES RAW: '+betTxt+'</div>';
         }
         result.innerHTML=`<div class="flex flex-col items-center gap-3 mt-8"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 2: Leyendo Forebet...</p></div>`;
         let foreTxt='Sin datos';
