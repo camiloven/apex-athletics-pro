@@ -122,7 +122,7 @@ async function runAnalisis(){
         result.innerHTML=`<div class="flex flex-col items-center gap-3 mt-8"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 3: Generando veredictos...</p></div>`;
         const prompt='BETMINES:\n'+betTxt+'\n\nFOREBET:\n'+foreTxt+'\n\nEres un analista de apuestas. Cruza los datos de BETMINES y FOREBET y genera un veredicto para CADA partido listado. Para cada partido escribe EXACTAMENTE en una sola linea este formato:\nPartido: NombreLocal vs NombreVisita | Betmines: PREDICCION | Forebet: PREDICCION % | Veredicto: LOCAL o EMPATE o VISITA | Confianza: NUMERO_ENTRE_50_Y_95 | Razon: texto corto\n\nReglas:\n- Si ambos coinciden, confianza alta (75-95)\n- Si difieren, confianza media (50-65)\n- Veredicto siempre en mayusculas: LOCAL, EMPATE o VISITA\n- ESCRIBE TODOS los partidos, no omitas ninguno\n- Solo las lineas con los partidos, sin texto extra antes ni despues.';
         const resp=await groqCall(prompt,1000);
-        const lineas=resp.split('\n').filter(l=>l.includes('Partido:')||l.includes('partido:'));
+        console.log('RESP GROQ:',resp);const lineas=resp.split('\n').filter(l=>l.includes('Partido:')||l.includes('partido:')||l.includes('vs')||l.includes('VS'));
         const partidos=lineas.map(l=>{
             const get=(key)=>{const i=l.indexOf(key);if(i<0)return'—';const v=l.slice(i+key.length);const j=v.indexOf(' | ');return(j>=0?v.slice(0,j):v).trim();};
             return{partido:get('Partido:'),betmines:get('Betmines:'),forebet:get('Forebet:'),veredicto:get('Veredicto:').toUpperCase(),confianza:parseInt(get('Confianza:'))||70,razon:get('Razon:')};
