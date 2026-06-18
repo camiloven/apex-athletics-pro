@@ -84,7 +84,10 @@ function switchSport(sport){if(currentSport){const p=document.getElementById('ta
 function switchView(view){currentView=view;['pronos','resultados','analisis','fuentes','config'].forEach(v=>{const btn=document.getElementById('nav'+v.charAt(0).toUpperCase()+v.slice(1));if(btn){btn.classList.toggle('active',v===view);btn.classList.toggle('text-yellow-400',v===view);btn.classList.toggle('text-zinc-400',v!==view);}});const st=document.getElementById('sportTabs').parentElement;if(view==='pronos'){st.style.display='';renderPronos(currentSport,allData[currentSport]||[]);}else if(view==='resultados'){st.style.display='';renderResultados(currentSport);}else if(view==='analisis'){st.style.display='none';renderAnalisis();}else if(view==='fuentes'){st.style.display='none';renderFuentes();}else if(view==='config'){st.style.display='none';renderConfig();}window.scrollTo(0,0);}
 function pct(val){return Math.round((parseFloat(val)||0)*100);}
 function pill(value,label,colorClass){return `<div class="stat-pill bg-zinc-800"><div class="${colorClass} text-lg font-bold">${value}</div><div class="text-zinc-500 text-xs mt-0.5">${label}</div></div>`;}
-function renderPronos(sport,data){const container=document.getElementById('mainContent');container.innerHTML='';if(!data||data.length===0){container.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin datos</p>';return;}const parsed=data.map(row=>({...row,_date:parseDate(row.date)}));parsed.sort((a,b)=>{const da=a._date?.getTime()||0,db=b._date?.getTime()||0;return da!==db?da-db:(a.league||'').localeCompare(b.league||'');});const byDay={};parsed.forEach(row=>{const dk=getLocalDayKey(row._date);if(!byDay[dk])byDay[dk]={label:getLocalDayLabel(row._date),leagues:{}};const lg=row.league||'Sin liga';if(!byDay[dk].leagues[lg])byDay[dk].leagues[lg]=[];byDay[dk].leagues[lg].push(row);});const wrap=document.createElement('div');wrap.className='p-4';Object.values(byDay).forEach(dayGroup=>{const dayDiv=document.createElement('div');dayDiv.className='day-header rounded-xl px-4 py-3 mb-4 mt-2';dayDiv.innerHTML='<span class="font-bold text-yellow-400">'+dayGroup.label+'</span>';wrap.appendChild(dayDiv);Object.entries(dayGroup.leagues).forEach(([leagueName,matches])=>{const color=leagueColorMap[leagueName]||'#eab308';const lgDiv=document.createElement('div');lgDiv.className='flex items-center gap-2 mb-3 ml-1 px-2';lgDiv.innerHTML=`<span class="league-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${leagueName}</span><span class="text-zinc-600 text-xs">${matches.length} partidos</span>`;wrap.appendChild(lgDiv);matches.forEach(row=>wrap.appendChild(buildCard(sport,row,color)));});});container.appendChild(wrap);}
+function renderPronos(sport,data){const container=document.getElementById('mainContent');container.innerHTML='';if(!data||data.length===0){container.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin datos</p>';return;}
+const _todayK=new Date().toLocaleDateString('es-CL',{timeZone:USER_TZ});
+const _todayC=(data||[]).filter(r=>{const d=parseDate(r.date);return d&&getLocalDayKey(d)===_todayK;}).length;
+if(_todayC>0){const _bw=document.createElement('div');_bw.className='px-4 pt-4';_bw.innerHTML='<button id="btnAnalizarHoy" class="w-full py-4 bg-yellow-400 text-black font-bold rounded-2xl text-base">🤖 Analizar Hoy con IA ('+_todayC+' partidos)</button><div id="analisisHoyResult" class="mt-3"></div>';container.appendChild(_bw);document.getElementById('btnAnalizarHoy').onclick=function(){analizarHoy(sport,data);};}const parsed=data.map(row=>({...row,_date:parseDate(row.date)}));parsed.sort((a,b)=>{const da=a._date?.getTime()||0,db=b._date?.getTime()||0;return da!==db?da-db:(a.league||'').localeCompare(b.league||'');});const byDay={};parsed.forEach(row=>{const dk=getLocalDayKey(row._date);if(!byDay[dk])byDay[dk]={label:getLocalDayLabel(row._date),leagues:{}};const lg=row.league||'Sin liga';if(!byDay[dk].leagues[lg])byDay[dk].leagues[lg]=[];byDay[dk].leagues[lg].push(row);});const wrap=document.createElement('div');wrap.className='p-4';Object.values(byDay).forEach(dayGroup=>{const dayDiv=document.createElement('div');dayDiv.className='day-header rounded-xl px-4 py-3 mb-4 mt-2';dayDiv.innerHTML='<span class="font-bold text-yellow-400">'+dayGroup.label+'</span>';wrap.appendChild(dayDiv);Object.entries(dayGroup.leagues).forEach(([leagueName,matches])=>{const color=leagueColorMap[leagueName]||'#eab308';const lgDiv=document.createElement('div');lgDiv.className='flex items-center gap-2 mb-3 ml-1 px-2';lgDiv.innerHTML=`<span class="league-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${leagueName}</span><span class="text-zinc-600 text-xs">${matches.length} partidos</span>`;wrap.appendChild(lgDiv);matches.forEach(row=>wrap.appendChild(buildCard(sport,row,color)));});});container.appendChild(wrap);}
 function buildCard(sport,row,leagueColor){const div=document.createElement('div');div.className='card bg-zinc-900 rounded-2xl p-4 mb-3 border border-zinc-800';const timeStr=getLocalTime(row._date);const h=pct(row['1x2_h']),a=pct(row['1x2_a']);let statsHTML='';if(sport==='soccer'){const d=pct(row['1x2_d']),o15=pct(row['o_1.5']),o25=pct(row['o_2.5']),u25=pct(row['u_2.5']),u35=pct(row['u_3.5']);const best=Math.max(u25,u35);const isBest=best>55;if(isBest)div.classList.add('best');statsHTML='<div class="grid grid-cols-3 gap-2 mt-3">'+pill(h+'%','Local','text-yellow-400')+pill(d+'%','Empate','text-yellow-400')+pill(a+'%','Visita','text-yellow-400')+'</div>'+'<div class="grid grid-cols-4 gap-2 mt-2">'+pill(o15+'%','O 1.5','text-emerald-400')+pill(o25+'%','O 2.5','text-emerald-400')+pill(u25+'%','U 2.5',u25===best&&isBest?'text-green-300 font-bold':'text-sky-400')+pill(u35+'%','U 3.5',u35===best&&isBest?'text-green-300 font-bold':'text-sky-400')+'</div>';}else if(sport==='tennis'){const o25=pct(row['o_2.5']),u25=pct(row['u_2.5']);statsHTML='<div class="grid grid-cols-2 gap-2 mt-3">'+pill(h+'%','Local','text-yellow-400')+pill(a+'%','Visita','text-yellow-400')+'</div>'+'<div class="grid grid-cols-2 gap-2 mt-2">'+pill(o25+'%','O 2.5 sets','text-emerald-400')+pill(u25+'%','U 2.5 sets','text-sky-400')+'</div>';}else{statsHTML='<div class="grid grid-cols-2 gap-2 mt-3">'+pill(h+'%','Local','text-yellow-400')+pill(a+'%','Visita','text-yellow-400')+'</div>';}div.innerHTML=`<div class="flex justify-between items-start"><div class="flex-1 pr-2"><p class="font-bold text-sm leading-tight">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p></div>${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}</div>${statsHTML}`;return div;}
 async function fetchRealResults(sport,dates){const sportsKey=localStorage.getItem('sportsKey')||'';const endpoints={soccer:'https://v3.football.api-sports.io/fixtures?date=',basketball:'https://v1.basketball.api-sports.io/games?date=',hockey:'https://v1.hockey.api-sports.io/games?date=',volleyball:'https://v1.volleyball.api-sports.io/games?date=',handball:'https://v1.handball.api-sports.io/games?date=',tennis:'https://v1.tennis.api-sports.io/games?date='};const url=(endpoints[sport]||endpoints.soccer)+dates[0];try{const r=await fetch(url,{headers:{'x-apisports-key':sportsKey}});const j=await r.json();return j.response||[];}catch(e){return[];}}
 function normalize(str){return String(str||'').toLowerCase().replace(/[^a-z0-9]/g,'').trim();}
@@ -135,86 +138,45 @@ function renderAnalisisResult(partidos){const result=document.getElementById('an
 function renderFuentes(){document.getElementById('mainContent').innerHTML=`<div class="p-4"><p class="text-zinc-500 text-xs text-center mb-4 uppercase tracking-widest font-bold">Otras Fuentes</p><div class="space-y-3"><a href="https://betmines.com" target="_blank" class="flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><span class="text-2xl">⛏️</span><div><p class="font-bold">Betmines</p><p class="text-zinc-500 text-xs">Estadísticas y pronósticos</p></div><span class="ml-auto text-zinc-600">→</span></a><a href="https://forebet.com" target="_blank" class="flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><span class="text-2xl">📊</span><div><p class="font-bold">Forebet</p><p class="text-zinc-500 text-xs">Predicciones matemáticas</p></div><span class="ml-auto text-zinc-600">→</span></a><a href="https://adamchoi.co.uk" target="_blank" class="flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><span class="text-2xl">🔢</span><div><p class="font-bold">AdamChoi</p><p class="text-zinc-500 text-xs">Datos históricos</p></div><span class="ml-auto text-zinc-600">→</span></a><a href="https://sofascore.com" target="_blank" class="flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><span class="text-2xl">⚡</span><div><p class="font-bold">SofaScore</p><p class="text-zinc-500 text-xs">Resultados en vivo</p></div><span class="ml-auto text-zinc-600">→</span></a></div></div>`;}
 function renderConfig(){document.getElementById('mainContent').innerHTML=`<div class="p-4"><h2 class="text-xl font-bold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY (veredictos)</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY (lectura imágenes)</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 API-SPORTS KEY (resultados reales)</p><input type="password" id="inputSports" placeholder="tu clave..." value="${localStorage.getItem('sportsKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"></div></div><button onclick="saveConfig()" class="w-full py-5 bg-yellow-400 text-black font-bold rounded-3xl text-xl">💾 Guardar</button><p class="text-zinc-600 text-xs text-center mt-3">Las claves se guardan solo en tu dispositivo 🔒</p></div>`;}
 function saveConfig(){localStorage.setItem('groqKey',document.getElementById('inputGroq').value.trim());localStorage.setItem('geminiKey',document.getElementById('inputGemini').value.trim());localStorage.setItem('sportsKey',document.getElementById('inputSports').value.trim());alert('✅ Claves guardadas');switchView('pronos');}
+
+async function analizarHoy(sport,data){
+const key=localStorage.getItem('groqKey')||'';
+if(!key){alert('Configura tu clave Groq en Config');return;}
+const todayKey=new Date().toLocaleDateString('es-CL',{timeZone:USER_TZ});
+const todayMatches=data.filter(row=>{const d=parseDate(row.date);return d&&getLocalDayKey(d)===todayKey;});
+if(!todayMatches.length){alert('No hay partidos hoy');return;}
+const resultDiv=document.getElementById('analisisHoyResult');
+const btn=document.getElementById('btnAnalizarHoy');
+if(btn){btn.disabled=true;btn.textContent='⏳ Analizando...';}
+resultDiv.innerHTML='<div class="flex items-center gap-3 p-4 bg-zinc-900 rounded-2xl border border-yellow-500/30"><div class="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Analizando '+todayMatches.length+' partidos...</p></div>';
+const lista=todayMatches.map((r,i)=>(i+1)+'. '+(r.home||'?')+' vs '+(r.away||'?')+' ('+(r.league||'')+') Local:'+Math.round((parseFloat(r['1x2_h']||0))*100)+'% Empate:'+Math.round((parseFloat(r['1x2_d']||0))*100)+'% Visita:'+Math.round((parseFloat(r['1x2_a']||0))*100)+'% Over2.5:'+Math.round((parseFloat(r['o_2.5']||0))*100)+'% Under2.5:'+Math.round((parseFloat(r['u_2.5']||0))*100)+'%').join('
+');
+const prompt='Analiza estos partidos de '+sport+':
+
+'+lista+'
+
+Para CADA partido:
+---
+Partido: Local vs Visita
+Veredicto: resultado probable
+Confianza: Alta/Media/Baja
+Razon: explicacion corta
+---';
+try{
+const texto=await groqCall(prompt,2000);
+const partes=texto.split('---').filter(p=>p.trim()&&p.length>10);
+const html=partes.map(p=>{
+const lines=p.trim().split('
+').filter(l=>l.trim());
+const isAlta=p.includes('Alta');
+const color=isAlta?'border-green-500 bg-green-500/5':p.includes('Media')?'border-yellow-500 bg-yellow-500/5':'border-zinc-700 bg-zinc-900';
+return '<div class="rounded-2xl p-4 mb-3 border '+color+'">'+lines.map(l=>'<p class="text-sm mb-1">'+l+'</p>').join('')+'</div>';
+}).join('');
+resultDiv.innerHTML='<p class="text-yellow-400 font-bold text-sm mb-3 px-1">🤖 '+partes.length+' partidos analizados</p>'+html;
+}catch(e){resultDiv.innerHTML='<p class="text-red-400 text-sm p-4">Error: '+e.message+'</p>';}
+if(btn){btn.disabled=false;btn.textContent='🔄 Re-analizar';}}
+
 window.onload=()=>{try{const s=localStorage.getItem('apexData');if(s)allData=JSON.parse(s);}catch(e){allData={};}};
 </script>
 </body>
 </html>
-<script>
-// Patch analizarHoy
-const _origRenderPronos = renderPronos;
-renderPronos = function(sport, data) {
-  _origRenderPronos(sport, data);
-  const todayKey = new Date().toLocaleDateString('es-CL', {timeZone: USER_TZ});
-  const todayMatches = (data||[]).filter(row => {
-    const d = parseDate(row.date);
-    return d && getLocalDayKey(d) === todayKey;
-  });
-  if (!todayMatches.length) return;
-  const container = document.getElementById('mainContent');
-  const btn = document.createElement('div');
-  btn.className = 'px-4 pb-2';
-  btn.innerHTML = `<button onclick="analizarHoy('${sport}',${JSON.stringify(todayMatches).replace(/`/g,"'")})" class="w-full py-4 bg-yellow-400 text-black font-bold rounded-2xl text-base">🤖 Analizar Hoy con IA (${todayMatches.length} partidos)</button><div id="analisisHoyResult" class="mt-3 px-0"></div>`;
-  container.insertBefore(btn, container.firstChild);
-};
-
-async function analizarHoy(sport, todayMatches) {
-  const key = localStorage.getItem('groqKey') || '';
-  if (!key) { alert('Configura tu clave Groq en ⚙️ Config'); return; }
-  const resultDiv = document.getElementById('analisisHoyResult');
-  resultDiv.innerHTML = '<div class="flex items-center gap-3 py-4 px-4 bg-zinc-900 rounded-2xl border border-yellow-500/30 mx-4"><div class="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Analizando ' + todayMatches.length + ' partidos...</p></div>';
-  const lista = todayMatches.map((r,i) => {
-    const h = Math.round((parseFloat(r['1x2_h']||0))*100);
-    const d = Math.round((parseFloat(r['1x2_d']||0))*100);
-    const a = Math.round((parseFloat(r['1x2_a']||0))*100);
-    const o25 = Math.round((parseFloat(r['o_2.5']||0))*100);
-    const u25 = Math.round((parseFloat(r['u_2.5']||0))*100);
-    return `${i+1}. ${r.home||'?'} vs ${r.away||'?'} (${r.league||''})
-   Local:${h}% Empate:${d}% Visita:${a}% | Over2.5:${o25}% Under2.5:${u25}%`;
-  }).join('\n');
-  const prompt = `Eres experto en apuestas deportivas. Analiza estos partidos de ${sport} de hoy:\n\n${lista}\n\nPara CADA partido responde:\n---\n⚽ [Local] vs [Visita]\n🎯 Veredicto: [resultado más probable]\n📊 Confianza: [Alta/Media/Baja]\n💡 Razonamiento: [2 líneas basadas en los %]\n---\nSé directo y usa los datos.`;
-  try {
-    const texto = await groqCall(prompt, 1500);
-    const partes = texto.split('---').filter(p => p.trim());
-    const html = partes.map(p => {
-      const lines = p.trim().split('\n').filter(l => l.trim());
-      const color = p.includes('Alta') ? 'border-green-500/50 bg-green-500/5' : p.includes('Media') ? 'border-yellow-500/50 bg-yellow-500/5' : 'border-zinc-700 bg-zinc-900';
-      return `<div class="rounded-2xl p-4 mb-3 border ${color} mx-4">${lines.map(l=>`<p class="text-sm mb-1">${l}</p>`).join('')}</div>`;
-    }).join('');
-    resultDiv.innerHTML = `<div class="bg-zinc-900 rounded-2xl p-4 border border-yellow-500/30 mb-2 mx-4"><p class="text-yellow-400 font-bold text-sm mb-3">🤖 Análisis IA — ${todayMatches.length} partidos</p></div>${html}`;
-  } catch(e) {
-    resultDiv.innerHTML = '<p class="text-red-400 text-sm p-4">Error: ' + e.message + '</p>';
-  }
-}
-</script>
-<script>
-// Fix analizarHoy - usar variable global en vez de JSON en onclick
-document.addEventListener('click', function(e) {
-  const btn = e.target.closest('[data-analizar]');
-  if (!btn) return;
-  const sport = btn.getAttribute('data-analizar');
-  const todayKey = new Date().toLocaleDateString('es-CL', {timeZone: USER_TZ});
-  const data = allData[sport] || [];
-  const todayMatches = data.filter(row => {
-    const d = parseDate(row.date);
-    return d && getLocalDayKey(d) === todayKey;
-  });
-  analizarHoy(sport, todayMatches);
-});
-
-// Sobrescribir renderPronos para usar data-analizar
-const _rp2 = renderPronos;
-renderPronos = function(sport, data) {
-  _rp2(sport, data);
-  const todayKey = new Date().toLocaleDateString('es-CL', {timeZone: USER_TZ});
-  const count = (data||[]).filter(row => {
-    const d = parseDate(row.date);
-    return d && getLocalDayKey(d) === todayKey;
-  }).length;
-  if (!count) return;
-  const container = document.getElementById('mainContent');
-  const btn = document.createElement('div');
-  btn.className = 'px-4 pb-2';
-  btn.innerHTML = `<button data-analizar="${sport}" class="w-full py-4 bg-yellow-400 text-black font-bold rounded-2xl text-base">🤖 Analizar Hoy con IA (${count} partidos)</button><div id="analisisHoyResult" class="mt-3"></div>`;
-  container.insertBefore(btn, container.firstChild);
-};
-</script>
