@@ -45,6 +45,8 @@
         #wordContent ul, #wordContent ol { padding-left: 24px; margin: 8px 0; }
         #wordContent li { margin: 4px 0; }
         #wordContent strong { color: #fbbf24; }
+        .word-sport-badge { display:inline-block; background:#27272a; padding:2px 12px; border-radius:12px; font-size:11px; color:#eab308; margin-left:8px; }
+        .word-loaded { border-left:4px solid #22c55e !important; }
     </style>
 </head>
 <body>
@@ -89,6 +91,10 @@ const SPORT_ICONS={soccer:"⚽",tennis:"🎾",basketball:"🏀",hockey:"🏒",vo
 const LEAGUE_COLORS=['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#f97316','#06b6d4','#84cc16','#ec4899','#14b8a6'];
 let allData={},currentSport=null,currentView='pronos',leagueColorMap={},resultsCache={};
 let betminesImgs=[],forebetImgs=[];
+
+// ===== NUEVO: almacenar contenido Word por deporte =====
+let wordContents = {}; // clave: deporte, valor: string HTML
+
 const USER_TZ=Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 function parseDate(str){if(!str)return null;const m=String(str).trim().match(/^(\d+)\.(\d+)\.(\d{4})(?:\s+(\d+):(\d+))?/);if(!m)return null;return new Date(Date.UTC(+m[3],+m[2]-1,+m[1],+m[4]||0,+m[5]||0));}
@@ -102,7 +108,7 @@ function loadExcel(){const input=document.createElement('input');input.type='fil
 function showApp(sports){document.getElementById('uploadScreen').classList.add('hidden');document.getElementById('appScreen').classList.remove('hidden');buildLeagueColors(sports);buildTabs(sports);switchSport(sports[0]);}
 function buildLeagueColors(sports){leagueColorMap={};let i=0;sports.forEach(sport=>{(allData[sport]||[]).forEach(row=>{const lg=row.league||'Sin liga';if(!leagueColorMap[lg]){leagueColorMap[lg]=LEAGUE_COLORS[i%LEAGUE_COLORS.length];i++;}});});}
 function buildTabs(sports){document.getElementById('sportTabs').innerHTML=sports.map(s=>`<button id="tab-${s}" onclick="switchSport('${s}')" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold bg-zinc-800 text-zinc-300">${SPORT_ICONS[s]||'🏟'} ${s.charAt(0).toUpperCase()+s.slice(1)} <span class="ml-1 text-xs opacity-60">${allData[s]?.length||0}</span></button>`).join('');}
-function switchSport(sport){if(currentSport){const p=document.getElementById('tab-'+currentSport);if(p)p.classList.remove('tab-active');}currentSport=sport;const c=document.getElementById('tab-'+sport);if(c)c.classList.add('tab-active');if(currentView==='pronos')renderPronos(sport,allData[sport]||[]);else if(currentView==='analisis')renderAnalisis();window.scrollTo(0,0);}
+function switchSport(sport){if(currentSport){const p=document.getElementById('tab-'+currentSport);if(p)p.classList.remove('tab-active');}currentSport=sport;const c=document.getElementById('tab-'+sport);if(c)c.classList.add('tab-active');if(currentView==='pronos')renderPronos(sport,allData[sport]||[]);else if(currentView==='analisis')renderAnalisis();else if(currentView==='word')renderWord();else if(currentView==='fuentes')renderFuentes();else if(currentView==='config')renderConfig();window.scrollTo(0,0);}
 function switchView(view){
     currentView=view;
     const views = ['pronos','resultados','analisis','fuentes','config','word'];
@@ -117,10 +123,11 @@ function switchView(view){
     const st=document.getElementById('sportTabs').parentElement;
     if(view==='pronos'){
         st.style.display='';
-        renderPronos(currentSport,allData[currentSport]||[]);
+        if(currentSport) renderPronos(currentSport,allData[currentSport]||[]);
+        else if(Object.keys(allData).length>0) switchSport(Object.keys(allData)[0]);
     }else if(view==='resultados'){
         st.style.display='none';
-        renderResultados(currentSport);
+        if(currentSport) renderResultados(currentSport);
     }else if(view==='analisis'){
         st.style.display='none';
         renderAnalisis();
@@ -199,14 +206,31 @@ return (i+1)+'. '+(r.home||'?')+' vs '+(r.away||'?')+' ['+(r.league||'')+']\n   
 }).join('\n\n');const prompt='Eres un analista experto en apuestas deportivas con anos de experiencia leyendo modelos estadisticos de Forebet y Betmines. Analiza estos '+hoy.length+' partidos de '+sport+' con maximo rigor profesional:\n\n'+lista+'\n\nPara CADA partido sin excepcion, escribe un analisis completo en este formato EXACTO:\n---\nPartido: Local vs Visita\nVeredicto Principal: resultado 1x2 mas probable con tu justificacion estadistica\nMercado de Goles: recomendacion Over/Under basada en los porcentajes, explicando si el partido pinta abierto o cerrado\nLectura del Modelo: identifica si las probabilidades muestran un partido parejo, con favorito claro, o con se;ales contradictorias entre el mercado 1x2 y el de goles\nConfianza: Alta, Media o Baja, justificando por que\nRazonamiento Experto: parrafo extenso (4-6 lineas) explicando el patron completo del partido segun los datos disponibles, que tipo de partido se espera, y tu recomendacion final\n---\n\nSe riguroso, profesional y especifico con los numeros. No repitas frases genericas, cada analisis debe ser unico segun los datos reales del partido.';try{const texto=await groqCall(prompt,4000);const partes=texto.split('---').filter(p=>p.trim()&&p.includes('Partido:'));const html=partes.map(p=>{const lines=p.trim().split('\n').filter(l=>l.trim());const color=p.includes('Alta')?'border-green-500 bg-green-500/5':p.includes('Media')?'border-yellow-500 bg-yellow-500/5':'border-zinc-700 bg-zinc-900';return '<div class="rounded-2xl p-4 mb-3 border '+color+'">'+lines.map(l=>'<p class="text-sm mb-1">'+l+'</p>').join('')+'</div>';}).join('');rd.innerHTML='<p class="text-yellow-400 font-bold text-sm mb-3">🤖 '+partes.length+' analizados'+(totalDia>40?' (de '+totalDia+' totales del dia, se analizan los primeros 40)':'')+'</p>'+(html||'<p class="text-zinc-400 text-sm p-4 bg-zinc-900 rounded-2xl">'+texto+'</p>');}catch(e){rd.innerHTML='<p class="text-red-400 text-sm p-4">Error: '+e.message+'</p>';}bt.disabled=false;bt.textContent='🔄 Re-analizar';}
 
 // =============================================
-// NUEVA FUNCIÓN: RENDER WORD
+// NUEVA FUNCIÓN RENDER WORD (CON MÚLTIPLES DEPORTES)
 // =============================================
 function renderWord(){
     const container = document.getElementById('mainContent');
+
+    // Obtener lista de deportes disponibles (desde allData o fijos)
+    const sports = Object.keys(allData).length ? Object.keys(allData) : ['soccer','tennis','basketball','hockey','volleyball','handball'];
+
+    let sportSelector = '<select id="wordSportSelect" class="bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-yellow-400">';
+    sports.forEach(s => {
+        const label = s.charAt(0).toUpperCase() + s.slice(1);
+        const icon = SPORT_ICONS[s] || '🏟';
+        const hasContent = wordContents[s] ? ' ✅' : '';
+        sportSelector += `<option value="${s}">${icon} ${label}${hasContent}</option>`;
+    });
+    sportSelector += '</select>';
+
     container.innerHTML = `
         <div class="p-4">
             <div class="bg-zinc-900 rounded-2xl p-6 mb-4 border border-zinc-800">
-                <div class="flex flex-wrap gap-4 items-center">
+                <div class="flex flex-wrap gap-4 items-center mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="text-zinc-400 text-sm">Deporte:</span>
+                        ${sportSelector}
+                    </div>
                     <button id="wordUploadBtn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-2xl font-bold text-white text-sm flex items-center gap-2">
                         📂 Cargar Word (.docx)
                     </button>
@@ -214,32 +238,69 @@ function renderWord(){
                     <span id="wordFileName" class="text-zinc-400 text-sm">Ningún archivo cargado</span>
                     <span id="wordStatus" class="text-zinc-500 text-xs"></span>
                 </div>
+                <div class="flex flex-wrap gap-2 text-xs text-zinc-500">
+                    <span>📌 Los archivos se guardan por deporte</span>
+                    <span class="text-green-400">●</span><span>cargado</span>
+                </div>
             </div>
             <div id="wordContent" class="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 min-h-[300px] text-zinc-300 text-sm leading-relaxed">
                 <div class="flex flex-col items-center justify-center h-64 text-zinc-600">
                     <span class="text-5xl mb-4">📄</span>
-                    <p>Sube un archivo .docx con tus análisis</p>
+                    <p>Selecciona un deporte y carga su archivo Word</p>
                     <p class="text-xs mt-2 text-zinc-700">Ej: ANALISIS_DETALLADO_PARTE1_SOCCER.docx</p>
                 </div>
             </div>
         </div>
     `;
 
-    // Eventos para Word
+    // Mostrar contenido del deporte seleccionado al cambiar
+    const select = document.getElementById('wordSportSelect');
+    select.addEventListener('change', function() {
+        const sport = this.value;
+        if (wordContents[sport]) {
+            document.getElementById('wordContent').innerHTML = wordContents[sport];
+            document.getElementById('wordFileName').innerHTML = `📄 ${sport} (cargado)`;
+        } else {
+            document.getElementById('wordContent').innerHTML = `
+                <div class="flex flex-col items-center justify-center h-64 text-zinc-600">
+                    <span class="text-5xl mb-4">📄</span>
+                    <p>No hay archivo cargado para ${sport}</p>
+                    <p class="text-xs mt-2 text-zinc-700">Carga uno usando el botón</p>
+                </div>
+            `;
+            document.getElementById('wordFileName').innerHTML = `Ningún archivo cargado para ${sport}`;
+        }
+        document.getElementById('wordStatus').innerHTML = '';
+    });
+
+    // Evento de carga de archivo
     document.getElementById('wordUploadBtn').onclick = () => document.getElementById('wordFileInput').click();
     document.getElementById('wordFileInput').onchange = function(e) {
         const file = e.target.files[0];
         if (!file) return;
+
+        const sportSelect = document.getElementById('wordSportSelect');
+        const currentSport = sportSelect.value;
+
         document.getElementById('wordStatus').innerHTML = '⏳ Procesando...';
         const reader = new FileReader();
         reader.onload = function(ev) {
             const arrayBuffer = ev.target.result;
             mammoth.convertToHtml({ arrayBuffer: arrayBuffer })
                 .then(function(result) {
-                    let html = result.value;
+                    const html = result.value;
+                    // Guardar en el objeto wordContents por deporte
+                    wordContents[currentSport] = html;
                     document.getElementById('wordContent').innerHTML = html;
-                    document.getElementById('wordFileName').innerHTML = `📄 ${file.name}`;
+                    document.getElementById('wordFileName').innerHTML = `📄 ${file.name} (${currentSport})`;
                     document.getElementById('wordStatus').innerHTML = '✅ Cargado correctamente';
+
+                    // Actualizar el selector para mostrar el check
+                    const opt = sportSelect.querySelector(`option[value="${currentSport}"]`);
+                    if (opt) {
+                        const label = opt.textContent.replace(' ✅', '');
+                        opt.textContent = label + ' ✅';
+                    }
                 })
                 .catch(function(err) {
                     document.getElementById('wordContent').innerHTML = `
@@ -253,6 +314,13 @@ function renderWord(){
         };
         reader.readAsArrayBuffer(file);
     };
+
+    // Si ya hay contenido para el deporte actual, mostrarlo
+    const initialSport = select ? select.value : (sports[0] || 'soccer');
+    if (wordContents[initialSport]) {
+        document.getElementById('wordContent').innerHTML = wordContents[initialSport];
+        document.getElementById('wordFileName').innerHTML = `📄 ${initialSport} (cargado)`;
+    }
 }
 </script>
 </body>
