@@ -6,6 +6,8 @@
     <title>Pronos Camiloven</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- MAMMOTH.JS PARA LEER WORD -->
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
     <style>
         body{font-family:system-ui,sans-serif;background:#09090b;color:white;margin:0;}
         .hero{height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
@@ -23,6 +25,26 @@
         .league-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:bold;}
         @keyframes spin{to{transform:rotate(360deg);}}
         .spinner{animation:spin 1s linear infinite;}
+
+        /* ===== WORD STYLES ===== */
+        #wordContent h1, #wordContent h2, #wordContent h3, #wordContent h4 {
+            color: #fbbf24;
+            margin-top: 1.2em;
+            margin-bottom: 0.4em;
+        }
+        #wordContent h1 { font-size: 1.8rem; font-weight: 700; }
+        #wordContent h2 { font-size: 1.4rem; font-weight: 600; border-bottom: 1px solid #27272a; padding-bottom: 0.3em; }
+        #wordContent h3 { font-size: 1.1rem; font-weight: 600; }
+        #wordContent h4 { font-size: 1rem; font-weight: 600; }
+        #wordContent p { margin: 0.6em 0; line-height: 1.7; }
+        #wordContent table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 0.85rem; }
+        #wordContent table td, #wordContent table th { border: 1px solid #3f3f46; padding: 8px 12px; text-align: left; }
+        #wordContent table th { background: #18181b; font-weight: 600; color: #fbbf24; }
+        #wordContent table td { color: #d4d4d8; }
+        #wordContent hr { margin: 24px 0; border: 0; border-top: 2px dashed #27272a; }
+        #wordContent ul, #wordContent ol { padding-left: 24px; margin: 8px 0; }
+        #wordContent li { margin: 4px 0; }
+        #wordContent strong { color: #fbbf24; }
     </style>
 </head>
 <body>
@@ -54,10 +76,10 @@
     <div class="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50">
         <div class="flex">
             <button onclick="switchView('pronos')" id="navPronos" class="nav-tab active text-yellow-400">📋 Pronos</button>
-            
             <button onclick="switchView('analisis')" id="navAnalisis" class="nav-tab text-zinc-400">🎯 Análisis</button>
             <button onclick="switchView('fuentes')" id="navFuentes" class="nav-tab text-zinc-400">🔗 Fuentes</button>
             <button onclick="switchView('config')" id="navConfig" class="nav-tab text-zinc-400">⚙️ Config</button>
+            <button onclick="switchView('word')" id="navWord" class="nav-tab text-zinc-400">📄 Word</button>
         </div>
     </div>
 </div>
@@ -81,7 +103,39 @@ function showApp(sports){document.getElementById('uploadScreen').classList.add('
 function buildLeagueColors(sports){leagueColorMap={};let i=0;sports.forEach(sport=>{(allData[sport]||[]).forEach(row=>{const lg=row.league||'Sin liga';if(!leagueColorMap[lg]){leagueColorMap[lg]=LEAGUE_COLORS[i%LEAGUE_COLORS.length];i++;}});});}
 function buildTabs(sports){document.getElementById('sportTabs').innerHTML=sports.map(s=>`<button id="tab-${s}" onclick="switchSport('${s}')" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold bg-zinc-800 text-zinc-300">${SPORT_ICONS[s]||'🏟'} ${s.charAt(0).toUpperCase()+s.slice(1)} <span class="ml-1 text-xs opacity-60">${allData[s]?.length||0}</span></button>`).join('');}
 function switchSport(sport){if(currentSport){const p=document.getElementById('tab-'+currentSport);if(p)p.classList.remove('tab-active');}currentSport=sport;const c=document.getElementById('tab-'+sport);if(c)c.classList.add('tab-active');if(currentView==='pronos')renderPronos(sport,allData[sport]||[]);else if(currentView==='analisis')renderAnalisis();window.scrollTo(0,0);}
-function switchView(view){currentView=view;['pronos','resultados','analisis','fuentes','config'].forEach(v=>{const btn=document.getElementById('nav'+v.charAt(0).toUpperCase()+v.slice(1));if(btn){btn.classList.toggle('active',v===view);btn.classList.toggle('text-yellow-400',v===view);btn.classList.toggle('text-zinc-400',v!==view);}});const st=document.getElementById('sportTabs').parentElement;if(view==='pronos'){st.style.display='';renderPronos(currentSport,allData[currentSport]||[]);}else if(view==='analisis'){st.style.display='none';renderAnalisis();}else if(view==='fuentes'){st.style.display='none';renderFuentes();}else if(view==='config'){st.style.display='none';renderConfig();}window.scrollTo(0,0);}
+function switchView(view){
+    currentView=view;
+    const views = ['pronos','resultados','analisis','fuentes','config','word'];
+    views.forEach(v=>{
+        const btn=document.getElementById('nav'+v.charAt(0).toUpperCase()+v.slice(1));
+        if(btn){
+            btn.classList.toggle('active', v===view);
+            btn.classList.toggle('text-yellow-400', v===view);
+            btn.classList.toggle('text-zinc-400', v!==view);
+        }
+    });
+    const st=document.getElementById('sportTabs').parentElement;
+    if(view==='pronos'){
+        st.style.display='';
+        renderPronos(currentSport,allData[currentSport]||[]);
+    }else if(view==='resultados'){
+        st.style.display='none';
+        renderResultados(currentSport);
+    }else if(view==='analisis'){
+        st.style.display='none';
+        renderAnalisis();
+    }else if(view==='fuentes'){
+        st.style.display='none';
+        renderFuentes();
+    }else if(view==='config'){
+        st.style.display='none';
+        renderConfig();
+    }else if(view==='word'){
+        st.style.display='none';
+        renderWord();
+    }
+    window.scrollTo(0,0);
+}
 function pct(val){return Math.round((parseFloat(val)||0)*100);}
 function pill(value,label,colorClass){return `<div class="stat-pill bg-zinc-800"><div class="${colorClass} text-lg font-bold">${value}</div><div class="text-zinc-500 text-xs mt-0.5">${label}</div></div>`;}
 function renderPronos(sport,data){const container=document.getElementById('mainContent');container.innerHTML='';if(!data||data.length===0){container.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin datos</p>';return;}const _tk=new Date().toLocaleDateString('es-CL',{timeZone:USER_TZ});let _matches=(data||[]).filter(r=>{const d=parseDate(r.date);return d&&getLocalDayKey(d)===_tk;});if(!_matches.length){const _dias=[...new Set((data||[]).map(r=>{const d=parseDate(r.date);return d?getLocalDayKey(d):null;}).filter(Boolean))];if(_dias.length)_matches=(data||[]).filter(r=>{const d=parseDate(r.date);return d&&getLocalDayKey(d)===_dias[0];});}const _tc=_matches.length;if(_tc>0&&sport==='soccer'){const _bw=document.createElement('div');_bw.className='px-4 pt-4';_bw.innerHTML='<button id="btnAnalizarHoy" class="w-full py-4 bg-yellow-400 text-black font-bold rounded-2xl text-base">🤖 Analizar Hoy con IA ('+_tc+' partidos)</button><div id="analisisHoyResult" class="mt-3"></div>';container.appendChild(_bw);document.getElementById('btnAnalizarHoy').onclick=function(){const checks=document.querySelectorAll('.match-check:checked');const fullData=allData[sport]||data;let seleccion=data;if(checks.length>0){const ids=Array.from(checks).map(ch=>ch.getAttribute('data-match-id'));seleccion=fullData.filter(r=>ids.includes((r.home||'')+'|'+(r.away||'')+'|'+(r.date||'')));}analizarHoy(sport,seleccion,checks.length>0);};
@@ -143,6 +197,63 @@ const h=Math.round((parseFloat(r['1x2_h']||0))*100),d=Math.round((parseFloat(r['
 const o15=Math.round((parseFloat(r['o_1.5']||0))*100),o25=Math.round((parseFloat(r['o_2.5']||0))*100),u25=Math.round((parseFloat(r['u_2.5']||0))*100),u35=Math.round((parseFloat(r['u_3.5']||0))*100);
 return (i+1)+'. '+(r.home||'?')+' vs '+(r.away||'?')+' ['+(r.league||'')+']\n   1X2 -> Local:'+h+'% Empate:'+d+'% Visita:'+a+'%\n   Goles -> Over1.5:'+o15+'% Over2.5:'+o25+'% Under2.5:'+u25+'% Under3.5:'+u35+'%';
 }).join('\n\n');const prompt='Eres un analista experto en apuestas deportivas con anos de experiencia leyendo modelos estadisticos de Forebet y Betmines. Analiza estos '+hoy.length+' partidos de '+sport+' con maximo rigor profesional:\n\n'+lista+'\n\nPara CADA partido sin excepcion, escribe un analisis completo en este formato EXACTO:\n---\nPartido: Local vs Visita\nVeredicto Principal: resultado 1x2 mas probable con tu justificacion estadistica\nMercado de Goles: recomendacion Over/Under basada en los porcentajes, explicando si el partido pinta abierto o cerrado\nLectura del Modelo: identifica si las probabilidades muestran un partido parejo, con favorito claro, o con se;ales contradictorias entre el mercado 1x2 y el de goles\nConfianza: Alta, Media o Baja, justificando por que\nRazonamiento Experto: parrafo extenso (4-6 lineas) explicando el patron completo del partido segun los datos disponibles, que tipo de partido se espera, y tu recomendacion final\n---\n\nSe riguroso, profesional y especifico con los numeros. No repitas frases genericas, cada analisis debe ser unico segun los datos reales del partido.';try{const texto=await groqCall(prompt,4000);const partes=texto.split('---').filter(p=>p.trim()&&p.includes('Partido:'));const html=partes.map(p=>{const lines=p.trim().split('\n').filter(l=>l.trim());const color=p.includes('Alta')?'border-green-500 bg-green-500/5':p.includes('Media')?'border-yellow-500 bg-yellow-500/5':'border-zinc-700 bg-zinc-900';return '<div class="rounded-2xl p-4 mb-3 border '+color+'">'+lines.map(l=>'<p class="text-sm mb-1">'+l+'</p>').join('')+'</div>';}).join('');rd.innerHTML='<p class="text-yellow-400 font-bold text-sm mb-3">🤖 '+partes.length+' analizados'+(totalDia>40?' (de '+totalDia+' totales del dia, se analizan los primeros 40)':'')+'</p>'+(html||'<p class="text-zinc-400 text-sm p-4 bg-zinc-900 rounded-2xl">'+texto+'</p>');}catch(e){rd.innerHTML='<p class="text-red-400 text-sm p-4">Error: '+e.message+'</p>';}bt.disabled=false;bt.textContent='🔄 Re-analizar';}
+
+// =============================================
+// NUEVA FUNCIÓN: RENDER WORD
+// =============================================
+function renderWord(){
+    const container = document.getElementById('mainContent');
+    container.innerHTML = `
+        <div class="p-4">
+            <div class="bg-zinc-900 rounded-2xl p-6 mb-4 border border-zinc-800">
+                <div class="flex flex-wrap gap-4 items-center">
+                    <button id="wordUploadBtn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-2xl font-bold text-white text-sm flex items-center gap-2">
+                        📂 Cargar Word (.docx)
+                    </button>
+                    <input type="file" id="wordFileInput" accept=".docx" style="display:none;">
+                    <span id="wordFileName" class="text-zinc-400 text-sm">Ningún archivo cargado</span>
+                    <span id="wordStatus" class="text-zinc-500 text-xs"></span>
+                </div>
+            </div>
+            <div id="wordContent" class="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 min-h-[300px] text-zinc-300 text-sm leading-relaxed">
+                <div class="flex flex-col items-center justify-center h-64 text-zinc-600">
+                    <span class="text-5xl mb-4">📄</span>
+                    <p>Sube un archivo .docx con tus análisis</p>
+                    <p class="text-xs mt-2 text-zinc-700">Ej: ANALISIS_DETALLADO_PARTE1_SOCCER.docx</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Eventos para Word
+    document.getElementById('wordUploadBtn').onclick = () => document.getElementById('wordFileInput').click();
+    document.getElementById('wordFileInput').onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('wordStatus').innerHTML = '⏳ Procesando...';
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            const arrayBuffer = ev.target.result;
+            mammoth.convertToHtml({ arrayBuffer: arrayBuffer })
+                .then(function(result) {
+                    let html = result.value;
+                    document.getElementById('wordContent').innerHTML = html;
+                    document.getElementById('wordFileName').innerHTML = `📄 ${file.name}`;
+                    document.getElementById('wordStatus').innerHTML = '✅ Cargado correctamente';
+                })
+                .catch(function(err) {
+                    document.getElementById('wordContent').innerHTML = `
+                        <div class="text-red-400 p-8 text-center">
+                            ❌ Error al leer el archivo: ${err.message}
+                            <br><span class="text-xs text-zinc-500 mt-2 block">Verifica que el archivo no esté dañado</span>
+                        </div>
+                    `;
+                    document.getElementById('wordStatus').innerHTML = '❌ Error';
+                });
+        };
+        reader.readAsArrayBuffer(file);
+    };
+}
 </script>
 </body>
 </html>
