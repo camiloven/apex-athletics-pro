@@ -514,25 +514,30 @@ function updateCountdowns() {
 
 // ===== API =====
 async function fetchRealResults(sport, dates) {
-    // Asegurar token válido
-    if (!isTokenValid()) {
-        try { await authenticate(); } catch { showToast('Error de autenticación', true); return { games: [], debug: 'Auth falló' }; }
-    }
+    const apiKey = localStorage.getItem('sportsKey') || '';
+    if (!apiKey) return { games: [], debug: 'Sin API key. Configúrala en ⚙️ Config' };
     if (!dates?.length) return { games: [], debug: 'Sin fechas' };
+
+    const endpoints = {
+        soccer: 'https://v3.football.api-sports.io/fixtures?date=',
+        basketball: 'https://v1.basketball.api-sports.io/games?date=',
+        hockey: 'https://v1.hockey.api-sports.io/games?date=',
+        volleyball: 'https://v1.volleyball.api-sports.io/games?date=',
+        handball: 'https://v1.handball.api-sports.io/games?date=',
+        tennis: 'https://v1.tennis.api-sports.io/games?date='
+    };
+
+    const url = (endpoints[sport] || endpoints.soccer) + dates[0];
+
     try {
-        const res = await fetch(`/api/sports-proxy?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(dates[0])}`, { headers:{'Authorization':`Bearer ${authToken}`} });
-        if (!res.ok) {
-            if(res.status===401) {
-                try {
-                    await authenticate();
-                    const res2 = await fetch(`/api/sports-proxy?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(dates[0])}`, { headers:{'Authorization':`Bearer ${authToken}`} });
-                    if (res2.ok) { const d = await res2.json(); return { games: d.response||[], debug: d.debug || null }; }
-                } catch {}
-            }
-            return { games: [], debug: `HTTP ${res.status}` };
-        }
+        const res = await fetch(url, { headers: { 'x-apisports-key': apiKey } });
         const data = await res.json();
-        return { games: data.response||[], debug: data.debug || null };
+
+        if (data.errors && Object.keys(data.errors).length) {
+            return { games: [], debug: 'API error: ' + JSON.stringify(data.errors) };
+        }
+
+        return { games: data.response || [], debug: data.results + ' resultados de API' };
     } catch (err) {
         return { games: [], debug: 'Error: ' + err.message };
     }
@@ -854,12 +859,13 @@ function renderConfig() {
         </div>`;
     }
 
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-green-400 font-bold mb-1">🔒 API-SPORTS KEY</p><p class="text-xs text-zinc-500">Se gestiona desde el servidor (Vercel).</p></div>${debugHTML}</div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">⚽ API-SPORTS KEY (resultados)</p><input type="password" id="inputSports" placeholder="Tu clave de api-sports.io" value="${localStorage.getItem('sportsKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}</div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
     localStorage.setItem('groqKey',document.getElementById('inputGroq').value.trim());
     localStorage.setItem('geminiKey',document.getElementById('inputGemini').value.trim());
+    localStorage.setItem('sportsKey',document.getElementById('inputSports').value.trim());
     const newTz = document.getElementById('inputTimezone').value;
     if (newTz !== userTimezone) {
         userTimezone = newTz;
