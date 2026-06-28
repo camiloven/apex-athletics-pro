@@ -626,7 +626,8 @@ async function fetchRealResults(sport, dates) {
             const res = await fetch(url, { headers: { 'x-apisports-key': apiKey } });
             const data = await res.json();
             if (data.errors && Object.keys(data.errors).length) {
-                return { games: [], debug: 'API error: ' + JSON.stringify(data.errors) };
+                console.warn('API error:', data.errors);
+                continue; // Intentar siguiente fecha o fallback
             }
             if (data.response) {
                 allGames = allGames.concat(data.response);
