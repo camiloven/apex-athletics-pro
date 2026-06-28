@@ -26,13 +26,13 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.SPORTS_API_KEY;
     if (!apiKey) {
-        return res.status(500).json({ error: 'API key no configurada en el servidor' });
+        return res.status(200).json({ response: [], debug: 'SPORTS_API_KEY no configurada en Vercel Environment Variables' });
     }
 
     // Obtener parámetros de la query
     const { sport, date } = req.query;
     if (!sport || !date) {
-        return res.status(400).json({ error: 'Parámetros requeridos: sport, date' });
+        return res.status(200).json({ response: [], debug: 'Faltan parámetros sport o date' });
     }
 
     // Mapeo de deportes a endpoints
@@ -52,20 +52,25 @@ export default async function handler(req, res) {
             headers: { 'x-apisports-key': apiKey }
         });
 
-        if (!response.ok) {
-            return res.status(response.status).json({
-                error: `Error de la API externa: ${response.status}`
+        const data = await response.json();
+
+        // Devolver debug info si no hay resultados
+        if (!data.response || data.response.length === 0) {
+            return res.status(200).json({
+                response: [],
+                debug: {
+                    url: url,
+                    status: response.status,
+                    apiErrors: data.errors || null,
+                    results: data.results || 0,
+                    remaining: response.headers.get('x-ratelimit-requests-remaining') || 'unknown'
+                }
             });
         }
 
-        const data = await response.json();
-
-        // Cache corto para no repetir llamadas
         res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
-
-        return res.status(200).json({ response: data.response || [] });
+        return res.status(200).json({ response: data.response });
     } catch (error) {
-        console.error('Error fetching sports data:', error.message);
-        return res.status(500).json({ error: 'Error al consultar resultados' });
+        return res.status(200).json({ response: [], debug: 'Error de conexión: ' + error.message });
     }
 }

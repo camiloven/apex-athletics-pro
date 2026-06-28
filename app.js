@@ -508,28 +508,25 @@ function updateCountdowns() {
 async function fetchRealResults(sport, dates) {
     // Asegurar token válido
     if (!isTokenValid()) {
-        try { await authenticate(); } catch { showToast('Error de autenticación', true); return []; }
+        try { await authenticate(); } catch { showToast('Error de autenticación', true); return { games: [], debug: 'Auth falló' }; }
     }
-    if (!dates?.length) return [];
+    if (!dates?.length) return { games: [], debug: 'Sin fechas' };
     try {
         const res = await fetch(`/api/sports-proxy?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(dates[0])}`, { headers:{'Authorization':`Bearer ${authToken}`} });
         if (!res.ok) {
             if(res.status===401) {
-                // Token expirado, renovar y reintentar
                 try {
                     await authenticate();
                     const res2 = await fetch(`/api/sports-proxy?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(dates[0])}`, { headers:{'Authorization':`Bearer ${authToken}`} });
-                    if (res2.ok) return (await res2.json()).response||[];
+                    if (res2.ok) { const d = await res2.json(); return { games: d.response||[], debug: d.debug || null }; }
                 } catch {}
             }
-            showToast('Error al obtener resultados', true);
-            return [];
+            return { games: [], debug: `HTTP ${res.status}` };
         }
-        return (await res.json()).response||[];
+        const data = await res.json();
+        return { games: data.response||[], debug: data.debug || null };
     } catch (err) {
-        console.error('Error fetching results:', err);
-        showToast('Error de conexión', true);
-        return [];
+        return { games: [], debug: 'Error: ' + err.message };
     }
 }
 
@@ -553,15 +550,18 @@ async function renderResultados(sport) {
         return;
     }
 
-    const apiGames=await fetchRealResults(sport,dates);
+    const apiResult = await fetchRealResults(sport, dates);
+    const apiGames = apiResult.games || [];
     
     // Debug info si no hay resultados
     if (!apiGames.length) {
+        const debugInfo = apiResult.debug;
+        const debugStr = typeof debugInfo === 'object' ? JSON.stringify(debugInfo) : (debugInfo || 'Sin info');
         container.innerHTML=`<div class="p-4 text-center mt-16">
             <p class="text-zinc-400 mb-2">Sin resultados de la API</p>
-            <p class="text-zinc-600 text-xs">Deporte: ${sport}</p>
-            <p class="text-zinc-600 text-xs">Fechas consultadas: ${dates.join(', ')}</p>
-            <p class="text-zinc-600 text-xs mb-4">Partidos en Excel: ${data.length}</p>
+            <p class="text-zinc-600 text-xs mb-1">Deporte: ${sport}</p>
+            <p class="text-zinc-600 text-xs mb-1">Fechas: ${dates.join(', ')}</p>
+            <p class="text-zinc-600 text-xs mb-4">Debug: ${debugStr}</p>
             <button onclick="resultsCache={};renderResultados('${sport}')" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">🔄 Reintentar</button>
         </div>`;
         return;
