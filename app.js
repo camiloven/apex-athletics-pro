@@ -7,6 +7,7 @@ const LEAGUE_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#f9731
 let allData = {}, currentSport = null, currentView = 'pronos';
 let leagueColorMap = {}, resultsCache = {}, authToken = null;
 let betminesImgs = [], forebetImgs = [], wordContents = {};
+let analisisSelectedMatches = [];
 let countdownInterval = null;
 let autoRefreshInterval = null;
 let currentTheme = localStorage.getItem("theme") || "dark";
@@ -812,40 +813,295 @@ async function groqCall(content, maxTokens) {
 }
 
 function renderAnalisis() {
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">🎯 Análisis Combinado</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-sm text-zinc-400 mb-3">Sube capturas de pronósticos</p><div class="grid grid-cols-2 gap-3"><div><p class="text-xs text-zinc-500 mb-2 font-bold">📸 BETMINES</p><label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700 transition">${betminesImgs.length?betminesImgs.length+' foto(s) ✅':'Seleccionar'}<input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'betmines')"></label></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">📸 FOREBET</p><label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700 transition">${forebetImgs.length?forebetImgs.length+' foto(s) ✅':'Seleccionar'}<input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'forebet')"></label></div></div></div><button onclick="runAnalisis()" class="shimmer w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl mb-4 hover:bg-yellow-300 transition">🤖 Generar Análisis</button><div id="analisisResult"></div></div>`;
+    const sports = Object.keys(allData);
+    let matchesHTML = '';
+    
+    if (sports.length) {
+        sports.forEach(sport => {
+            const data = allData[sport] || [];
+            if (!data.length) return;
+            const leagues = [...new Set(data.map(r => r.league || 'Sin liga'))];
+            leagues.forEach(lg => {
+                const matches = data.filter(r => (r.league||'Sin liga') === lg).slice(0, 30);
+                matchesHTML += `<p class="text-xs text-yellow-400 font-bold mt-3 mb-1 uppercase">${lg}</p>`;
+                matches.forEach((r, idx) => {
+                    const id = (r.home||'')+'|'+(r.away||'')+'|'+(r.date||'');
+                    const h = Math.round((parseFloat(r['1x2_h']||0))*100);
+                    const d = Math.round((parseFloat(r['1x2_d']||0))*100);
+                    const a = Math.round((parseFloat(r['1x2_a']||0))*100);
+                    matchesHTML += `<label class="flex items-center gap-3 p-3 bg-zinc-800/50 rounded-xl mb-1 cursor-pointer hover:bg-zinc-800 transition" for="an-${idx}-${lg.replace(/[^a-zA-Z]/g,'')}"><input type="checkbox" id="an-${idx}-${lg.replace(/[^a-zA-Z]/g,'')}" class="analisis-check accent-yellow-400 w-4 h-4" data-match-id="${id}" onchange="updateAnalisisCount()"><div class="flex-1 min-w-0"><p class="text-sm font-bold truncate">${r.home||'?'} vs ${r.away||'?'}</p><p class="text-xs text-zinc-500">${r.date||''} · 1X2: ${h}/${d}/${a}%</p></div></label>`;
+                });
+            });
+        });
+    }
+
+    document.getElementById('mainContent').innerHTML = `
+    <div class="p-4 view-fade-enter">
+        <h2 class="text-xl font-extrabold text-yellow-400 mb-4">🎯 Análisis Profundo</h2>
+        
+        <!-- Tabs: Seleccionar / Manual -->
+        <div class="flex gap-2 mb-4">
+            <button onclick="showAnalisisTab('seleccion')" id="tabSeleccion" class="flex-1 py-3 rounded-2xl text-sm font-bold bg-yellow-400 text-black transition">📋 Seleccionar</button>
+            <button onclick="showAnalisisTab('manual')" id="tabManual" class="flex-1 py-3 rounded-2xl text-sm font-bold bg-zinc-800 text-zinc-400 transition">✍️ Manual</button>
+        </div>
+
+        <!-- Tab: Seleccionar de datos -->
+        <div id="analisisSeleccion">
+            ${matchesHTML ? `
+            <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-zinc-800">
+                <div class="flex justify-between items-center mb-3">
+                    <p class="text-sm text-zinc-400">Selecciona los partidos a analizar</p>
+                    <span id="analisisCount" class="text-yellow-400 text-xs font-bold">0 sel.</span>
+                </div>
+                <div class="flex gap-2 mb-3">
+                    <button onclick="selectAllAnalisis(true)" class="text-xs bg-zinc-800 text-zinc-300 px-3 py-1 rounded-full hover:bg-zinc-700">Todos</button>
+                    <button onclick="selectAllAnalisis(false)" class="text-xs bg-zinc-800 text-zinc-300 px-3 py-1 rounded-full hover:bg-zinc-700">Ninguno</button>
+                </div>
+                <div class="max-h-80 overflow-y-auto space-y-1 pr-1" id="analisisMatchList">
+                    ${matchesHTML}
+                </div>
+            </div>` : `
+            <div class="bg-zinc-900 rounded-2xl p-6 mb-4 border border-zinc-800 text-center">
+                <p class="text-4xl mb-3">📂</p>
+                <p class="text-zinc-400 text-sm">No hay datos cargados.</p>
+                <p class="text-zinc-600 text-xs mt-1">Carga un archivo en 📋 Pronos o usa la pestaña Manual</p>
+            </div>`}
+        </div>
+
+        <!-- Tab: Manual -->
+        <div id="analisisManual" class="hidden">
+            <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-zinc-800">
+                <p class="text-sm text-zinc-400 mb-3">Escribe los partidos (uno por línea)</p>
+                <textarea id="analisisManualInput" rows="6" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none" placeholder="Real Madrid vs Barcelona\nMan City vs Liverpool\nBoca vs River"></textarea>
+            </div>
+        </div>
+
+        <!-- Mercados a analizar -->
+        <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-zinc-800">
+            <p class="text-xs text-zinc-500 font-bold mb-3 uppercase">📊 Mercados a analizar</p>
+            <div class="grid grid-cols-3 gap-2">
+                <label class="flex items-center gap-2 bg-zinc-800 rounded-xl p-2 cursor-pointer hover:bg-zinc-700">
+                    <input type="checkbox" id="mktGoles" class="accent-yellow-400" checked><span class="text-xs">⚽ Goles</span>
+                </label>
+                <label class="flex items-center gap-2 bg-zinc-800 rounded-xl p-2 cursor-pointer hover:bg-zinc-700">
+                    <input type="checkbox" id="mktCorners" class="accent-yellow-400" checked><span class="text-xs">📐 Corners</span>
+                </label>
+                <label class="flex items-center gap-2 bg-zinc-800 rounded-xl p-2 cursor-pointer hover:bg-zinc-700">
+                    <input type="checkbox" id="mktTarjetas" class="accent-yellow-400" checked><span class="text-xs">🟨 Tarjetas</span>
+                </label>
+                <label class="flex items-center gap-2 bg-zinc-800 rounded-xl p-2 cursor-pointer hover:bg-zinc-700">
+                    <input type="checkbox" id="mktHandicap" class="accent-yellow-400" checked><span class="text-xs">🏆 Handicap</span>
+                </label>
+                <label class="flex items-center gap-2 bg-zinc-800 rounded-xl p-2 cursor-pointer hover:bg-zinc-700">
+                    <input type="checkbox" id="mktHT" class="accent-yellow-400" checked><span class="text-xs">⏱️ 1er Tiempo</span>
+                </label>
+                <label class="flex items-center gap-2 bg-zinc-800 rounded-xl p-2 cursor-pointer hover:bg-zinc-700">
+                    <input type="checkbox" id="mktExtras" class="accent-yellow-400" checked><span class="text-xs">📊 Extras</span>
+                </label>
+            </div>
+        </div>
+
+        <button onclick="runDeepAnalisis()" id="btnDeepAnalisis" class="shimmer w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl mb-4 hover:bg-yellow-300 transition">🤖 Generar Análisis Completo</button>
+        <div id="analisisResult"></div>
+    </div>`;
 }
 
-function loadImgs(event,source){
-    const files=Array.from(event.target.files),arr=source==='betmines'?betminesImgs:forebetImgs;arr.length=0;let loaded=0;
-    files.forEach(f=>{if(f.size>5*1024*1024){showToast(f.name+' muy grande',true);return;}const r=new FileReader();r.onload=e=>{arr.push(e.target.result.split(',')[1]);loaded++;if(loaded===files.length)renderAnalisis();};r.readAsDataURL(f);});
+function showAnalisisTab(tab) {
+    document.getElementById('analisisSeleccion').classList.toggle('hidden', tab !== 'seleccion');
+    document.getElementById('analisisManual').classList.toggle('hidden', tab !== 'manual');
+    document.getElementById('tabSeleccion').className = `flex-1 py-3 rounded-2xl text-sm font-bold transition ${tab==='seleccion'?'bg-yellow-400 text-black':'bg-zinc-800 text-zinc-400'}`;
+    document.getElementById('tabManual').className = `flex-1 py-3 rounded-2xl text-sm font-bold transition ${tab==='manual'?'bg-yellow-400 text-black':'bg-zinc-800 text-zinc-400'}`;
 }
 
-async function runAnalisis(){
-    const result=document.getElementById('analisisResult');
-    if(!betminesImgs.length&&!forebetImgs.length){showToast('Sube al menos una captura',true);return;}
-    if(!localStorage.getItem('groqKey')){showToast('Configura Groq en Config',true);return;}
-    try{
-        result.innerHTML=`<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 1: Leyendo Betmines...</p></div>`;
-        let betTxt='Sin datos';
-        if(betminesImgs.length){const r=[];for(const img of betminesImgs.slice(0,2))r.push(await geminiCall(img.replace(/^data:image\/[a-z]+;base64,/,''),'Lee esta imagen de BETMINES. Lista SOLO los partidos visibles: EquipoLocal vs EquipoVisita: PREDICCION (LOCAL/EMPATE/VISITA).'));betTxt=r.join('\n');}
-        result.innerHTML=`<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 2: Leyendo Forebet...</p></div>`;
-        let foreTxt='Sin datos';
-        if(forebetImgs.length){const r=[];for(const img of forebetImgs.slice(0,2))r.push(await geminiCall(img.replace(/^data:image\/[a-z]+;base64,/,''),'Lee esta imagen de FOREBET. Lista SOLO los partidos: EquipoLocal vs EquipoVisita: PREDICCION PORCENTAJE%.'));foreTxt=r.join('\n');}
-        result.innerHTML=`<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 3: Generando veredictos...</p></div>`;
-        const resp=await groqCall('BETMINES:\n'+betTxt+'\n\nFOREBET:\n'+foreTxt+'\n\nCruza datos y genera veredicto por partido:\nPartido: Local vs Visita | Betmines: PRED | Forebet: PRED% | Veredicto: LOCAL/EMPATE/VISITA | Confianza: 50-95 | Razon: corto',1000);
-        const partidos=resp.split('\n').filter(l=>l.trim().length>5).map(l=>{const g=k=>{const i=l.indexOf(k);if(i<0)return'—';const v=l.slice(i+k.length);const j=v.indexOf(' | ');return(j>=0?v.slice(0,j):v).trim();};return{partido:g('Partido:'),betmines:g('Betmines:'),forebet:g('Forebet:'),veredicto:g('Veredicto:').toUpperCase(),confianza:parseInt(g('Confianza:'))||70,razon:g('Razon:')};});
-        renderAnalisisResult(partidos);
-    }catch(e){result.innerHTML=`<div class="text-center mt-8"><div class="text-4xl mb-3">⚠️</div><p class="text-zinc-400 mb-2">Error en el análisis</p><p class="text-red-400 text-sm mb-4">${e.message}</p><p class="text-zinc-600 text-xs mb-4">Verifica tu clave Groq en ⚙️ Config</p><button onclick="runAnalisis()" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;}
+function selectAllAnalisis(select) {
+    document.querySelectorAll('.analisis-check').forEach(c => c.checked = select);
+    updateAnalisisCount();
 }
 
-function renderAnalisisResult(partidos){
-    const result=document.getElementById('analisisResult');
-    if(!partidos.length){result.innerHTML='<p class="text-zinc-500 text-center mt-8">Sin partidos</p>';return;}
-    const colores={LOCAL:'border-green-500',EMPATE:'border-yellow-500',VISITA:'border-blue-500'},iconos={LOCAL:'🏠',EMPATE:'🤝',VISITA:'✈️'};
-    const total=partidos.length,altas=partidos.filter(p=>p.confianza>=70).length,avg=Math.round(partidos.reduce((a,p)=>a+p.confianza,0)/total);
-    result.innerHTML=`<div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><div class="flex justify-between items-center mb-3"><p class="text-yellow-400 font-bold text-sm uppercase">📊 Resumen</p><span class="text-zinc-500 text-xs">${total} partidos</span></div><div class="flex items-center justify-center gap-6 mb-3">${donutChart(avg,80,8)}<div class="grid grid-cols-2 gap-3 text-center"><div class="bg-zinc-800 rounded-xl p-2"><p class="text-xl font-bold text-green-400">${altas}</p><p class="text-zinc-500 text-xs">Alta conf.</p></div><div class="bg-zinc-800 rounded-xl p-2"><p class="text-xl font-bold text-yellow-400">${total-altas}</p><p class="text-zinc-500 text-xs">Media/baja</p></div></div></div></div>`+
-    partidos.map((p,i)=>{const c=p.confianza||0,ct=c>=70?'text-green-400':c>=50?'text-yellow-400':'text-zinc-400',b=colores[p.veredicto]||'border-zinc-700';return`<div class="card bg-zinc-900 rounded-2xl p-4 mb-3 border ${b}" style="transition-delay:${i*0.05}s"><p class="font-bold text-sm mb-3">${p.partido}</p><div class="space-y-1 mb-3"><div class="flex justify-between text-xs"><span class="text-zinc-500">🔨 Betmines</span><span class="text-zinc-300">${p.betmines||'−'}</span></div><div class="flex justify-between text-xs"><span class="text-zinc-500">📈 Forebet</span><span class="text-zinc-300">${p.forebet||'−'}</span></div></div><div class="bg-zinc-800 rounded-xl p-3 flex justify-between items-center"><div><p class="text-xs text-zinc-500 mb-1">🎯 Veredicto</p><p class="font-bold text-lg">${iconos[p.veredicto]||''} ${p.veredicto||'−'}</p><p class="text-zinc-500 text-xs mt-1">${p.razon||''}</p></div><div class="text-right"><p class="${ct} text-3xl font-bold">${c}%</p><p class="text-zinc-600 text-xs">confianza</p></div></div></div>`;}).join('');
+function updateAnalisisCount() {
+    const n = document.querySelectorAll('.analisis-check:checked').length;
+    const el = document.getElementById('analisisCount');
+    if (el) el.textContent = n + ' sel.';
+}
+
+function getSelectedAnalisisMatches() {
+    // From checkboxes
+    const checked = document.querySelectorAll('.analisis-check:checked');
+    const fromData = Array.from(checked).map(c => {
+        const parts = c.getAttribute('data-match-id').split('|');
+        return parts[0] + ' vs ' + parts[1];
+    });
+    // From manual input
+    const manualEl = document.getElementById('analisisManualInput');
+    const manual = manualEl ? manualEl.value.split('\n').map(l => l.trim()).filter(l => l.length > 3 && l.includes('vs')) : [];
+    // Combine
+    const all = [...new Set([...fromData, ...manual])];
+    return all;
+}
+
+const DEEP_ANALISIS_PROMPT = `Actúa como un analista deportivo profesional con especialización en TODOS los mercados de apuestas de fútbol. Cubre: resultado, goles, corners, tarjetas, handicap, tiros, posesión y más. Sé exhaustivo y honesto.
+
+Para CADA partido responde EXACTAMENTE este formato:
+
+### 🏟️ [EQUIPO A] vs [EQUIPO B]
+
+**📋 FICHA:** Pos tabla | Últimos 5 | Goles a favor/contra | Media goles/partido
+
+**⚽ GOLES:**
+- Over 0.5/1.5/2.5/3.5 con %
+- BTTS (ambos marcan) Sí/No con %
+- Goleadores principales
+
+**🟨 TARJETAS:**
+- Media amarillas/partido cada equipo
+- Total amarillas predicho (FT)
+- Pick HT tarjetas: Over/Under X.5
+- Pick ST tarjetas: Over/Under X.5
+- Handicap tarjetas
+- Rojas: Sí/No probabilidad
+
+**📐 CORNERS:**
+- Media corners cada equipo
+- Total corners predicho (FT)
+- Pick HT corners: Over/Under X.5
+- Pick ST corners: Over/Under X.5
+- Handicap corners
+- Corners primeros 10 min
+
+**🏆 HANDICAP:**
+- Asiático: -0.5 / -1.0 / -1.5 con probabilidad
+- Handicap goles recomendado
+- Handicap corners
+- Handicap tarjetas
+
+**⏱️ POR TIEMPOS:**
+- Resultado HT
+- Goles HT Over/Under
+- Corners HT Over/Under
+- Tarjetas HT Over/Under
+- ¿Más goles en ST que HT?
+- ¿Más corners en ST que HT?
+- ¿Más tarjetas en ST que HT?
+
+**📊 EXTRAS:**
+- Tiros a puerta Over/Under
+- Posesión estimada %
+- Primer gol: quién y minuto aprox
+- Faltas Over/Under
+
+**🎯 PICKS:**
+- ⭐⭐⭐⭐⭐ Máxima confianza: [pick]
+- ⭐⭐⭐⭐ Alta: [pick]
+- ⭐⭐⭐ Media: [pick]
+- Riesgos del partido
+
+---`;
+
+async function runDeepAnalisis() {
+    const matches = getSelectedAnalisisMatches();
+    if (!matches.length) { showToast('Selecciona o escribe al menos 1 partido', true); return; }
+    if (!localStorage.getItem('groqKey')) { showToast('Configura Groq en ⚙️ Config', true); return; }
+    if (matches.length > 8) { showToast('Máximo 8 partidos por análisis', true); return; }
+
+    const result = document.getElementById('analisisResult');
+    const btn = document.getElementById('btnDeepAnalisis');
+    btn.disabled = true;
+    btn.textContent = '⏳ Analizando...';
+
+    // Get active markets
+    const markets = [];
+    if (document.getElementById('mktGoles')?.checked) markets.push('goles');
+    if (document.getElementById('mktCorners')?.checked) markets.push('corners');
+    if (document.getElementById('mktTarjetas')?.checked) markets.push('tarjetas');
+    if (document.getElementById('mktHandicap')?.checked) markets.push('handicap');
+    if (document.getElementById('mktHT')?.checked) markets.push('tiempos');
+    if (document.getElementById('mktExtras')?.checked) markets.push('extras');
+
+    const matchList = matches.map((m, i) => (i+1) + '. ' + m).join('\n');
+    let prompt = DEEP_ANALISIS_PROMPT;
+    prompt += `\n\nMercados a analizar: ${markets.join(', ')}\n`;
+    prompt += `Si un mercado no está en la lista, omítelo. Enfócate en los que sí están.\n\n`;
+    prompt += `PARTIDOS:\n${matchList}`;
+
+    result.innerHTML = `<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm mt-3">Analizando ${matches.length} partido(s)...</p><p class="text-zinc-600 text-xs mt-1">Esto puede tomar unos segundos</p></div>`;
+
+    try {
+        const texto = await groqCall(prompt, 8000);
+        renderDeepAnalisisResult(texto, matches.length);
+    } catch(e) {
+        result.innerHTML = `<div class="text-center mt-8"><div class="text-4xl mb-3">⚠️</div><p class="text-zinc-400 mb-2">Error en el análisis</p><p class="text-red-400 text-sm mb-4">${e.message}</p><button onclick="runDeepAnalisis()" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;
+    }
+    btn.disabled = false;
+    btn.textContent = '🤖 Generar Análisis Completo';
+}
+
+function renderDeepAnalisisResult(texto, totalMatches) {
+    const result = document.getElementById('analisisResult');
+    
+    // Parse sections by ### headers
+    const sections = texto.split(/(?=### 🏟️)/g).filter(s => s.trim());
+    
+    if (sections.length <= 1 && texto.length < 500) {
+        result.innerHTML = `<div class="bg-zinc-900 rounded-2xl p-4 border border-zinc-800"><pre class="text-sm text-zinc-300 whitespace-pre-wrap">${texto}</pre></div>`;
+        return;
+    }
+
+    // Picks summary at the end
+    let picksHTML = '';
+    const picksMatch = texto.match(/(?:🎯.*PICKS|RESUMEN|COMBINADA)[\s\S]*$/i);
+    if (picksMatch) {
+        picksHTML = `<div class="bg-gradient-to-br from-yellow-500/10 to-yellow-600/5 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-yellow-400 font-bold text-sm mb-3">🎯 RESUMEN DE PICKS</p><div class="text-sm text-zinc-300 whitespace-pre-wrap">${picksMatch[0].replace(/[🎯📊🔥⭐⚠️]+\s*/g, m => '<span class="text-yellow-400">'+m+'</span>')}</div></div>`;
+    }
+
+    // Render each match section
+    const matchHTML = sections.map((s, i) => {
+        const lines = s.trim().split('\n');
+        const title = lines[0] || '';
+        const body = lines.slice(1).join('\n');
+        
+        // Color based on content
+        const hasHigh = s.includes('⭐⭐⭐⭐⭐');
+        const borderColor = hasHigh ? 'border-green-500' : 'border-yellow-500/50';
+        
+        // Format the body with some color
+        let formatted = body
+            .replace(/(⚽.*GOLES[^:]*:?)/gi, '<p class="text-green-400 font-bold text-xs uppercase mt-3 mb-1">$1</p>')
+            .replace(/(🟨.*TARJETAS[^:]*:?)/gi, '<p class="text-yellow-400 font-bold text-xs uppercase mt-3 mb-1">$1</p>')
+            .replace(/(📐.*CORNERS[^:]*:?)/gi, '<p class="text-blue-400 font-bold text-xs uppercase mt-3 mb-1">$1</p>')
+            .replace(/(🏆.*HANDICAP[^:]*:?)/gi, '<p class="text-purple-400 font-bold text-xs uppercase mt-3 mb-1">$1</p>')
+            .replace(/(⏱️.*TIEMPOS?[^:]*:?)/gi, '<p class="text-orange-400 font-bold text-xs uppercase mt-3 mb-1">$1</p>')
+            .replace(/(📊.*EXTRAS?[^:]*:?)/gi, '<p class="text-cyan-400 font-bold text-xs uppercase mt-3 mb-1">$1</p>')
+            .replace(/(🎯.*PICKS?[^:]*:?)/gi, '<p class="text-yellow-400 font-bold text-xs uppercase mt-3 mb-1">$1</p>')
+            .replace(/(📋.*FICHA[^:]*:?)/gi, '<p class="text-zinc-400 font-bold text-xs uppercase mt-3 mb-1">$1</p>')
+            .replace(/⭐⭐⭐⭐⭐/g, '<span class="text-green-400">⭐⭐⭐⭐⭐</span>')
+            .replace(/⭐⭐⭐⭐/g, '<span class="text-yellow-400">⭐⭐⭐⭐</span>')
+            .replace(/⭐⭐⭐/g, '<span class="text-zinc-400">⭐⭐⭐</span>')
+            .replace(/(Over|Under|BTTS|Sí|No)/g, '<span class="text-yellow-300">$1</span>');
+        
+        return `<div class="card bg-zinc-900 rounded-2xl p-4 mb-3 border ${borderColor}" style="transition-delay:${i*0.08}s">
+            <p class="font-extrabold text-base mb-2 gradient-gold">${title}</p>
+            <div class="text-xs text-zinc-300 leading-relaxed">${formatted.replace(/\n/g, '<br>')}</div>
+        </div>`;
+    }).join('');
+
+    result.innerHTML = `
+        <div class="bg-zinc-900 rounded-2xl p-3 mb-4 border border-yellow-500/30 flex items-center justify-between">
+            <p class="text-yellow-400 font-bold text-sm">🤖 ${totalMatches} partido(s) analizados</p>
+            <button onclick="copyAnalisisText()" class="text-xs bg-zinc-800 text-zinc-300 px-3 py-1 rounded-full hover:bg-zinc-700">📋 Copiar</button>
+        </div>
+        ${picksHTML}
+        ${matchHTML}
+    `;
+    
+    // Store raw text for copy
+    window._lastAnalisisText = texto;
     requestAnimationFrame(observeCards);
+}
+
+function copyAnalisisText() {
+    if (window._lastAnalisisText) {
+        navigator.clipboard.writeText(window._lastAnalisisText).then(() => showToast('📋 Análisis copiado')).catch(() => showToast('No se pudo copiar', true));
+    }
 }
 
 // ===== Analizar hoy =====
