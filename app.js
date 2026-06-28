@@ -144,9 +144,16 @@ function isTokenValid() {
 
 function goToNext() {
     document.getElementById('introScreen').style.display = 'none';
-    if (isTokenValid() && Object.keys(allData).length > 0) {
+
+    // Si ya hay datos guardados, ir directo a la app
+    if (Object.keys(allData).length > 0) {
+        // Token en background para las llamadas a API
+        if (!isTokenValid()) {
+            authenticate().catch(() => {});
+        }
         showApp(Object.keys(allData));
     } else {
+        // No hay datos, pedir archivo
         authenticate().then(() => loadExcel()).catch(() => {
             document.getElementById('uploadScreen').classList.remove('hidden');
         });
@@ -166,6 +173,19 @@ async function checkPassword() {
 function goToUpload() {
     document.getElementById('appScreen').classList.add('hidden');
     document.getElementById('uploadScreen').classList.remove('hidden');
+
+    // Mostrar botón de usar datos guardados si existen
+    const btnGuardado = document.getElementById('btnUsarGuardado');
+    const uploadInfo = document.getElementById('uploadInfo');
+    if (Object.keys(allData).length > 0) {
+        const deportes = Object.keys(allData).join(', ');
+        const total = Object.values(allData).reduce((a, rows) => a + rows.length, 0);
+        uploadInfo.textContent = `Datos guardados: ${deportes} (${total} partidos)`;
+        btnGuardado.classList.remove('hidden');
+    } else {
+        uploadInfo.textContent = 'Sube tu archivo Excel (.xlsx) para comenzar';
+        btnGuardado.classList.add('hidden');
+    }
 }
 
 // ===== Carga de Excel =====

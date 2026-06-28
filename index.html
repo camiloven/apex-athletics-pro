@@ -35,10 +35,14 @@
     <div class="text-center max-w-md w-full view-fade-enter">
         <div class="text-5xl mb-6">📊</div>
         <h2 class="text-3xl font-extrabold mb-2">Cargar Pronósticos</h2>
-        <p class="text-zinc-500 text-sm mb-6">Sube tu archivo Excel (.xlsx) para comenzar</p>
+        <p id="uploadInfo" class="text-zinc-500 text-sm mb-6">Sube tu archivo Excel (.xlsx) para comenzar</p>
         <button onclick="loadExcel()"
             class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">
             📂 Seleccionar Archivo
+        </button>
+        <button id="btnUsarGuardado" onclick="goToNext()"
+            class="hidden w-full py-4 bg-zinc-800 text-yellow-400 font-bold rounded-2xl text-base mt-3 hover:bg-zinc-700 transition">
+            📋 Usar datos guardados
         </button>
     </div>
 </div>
