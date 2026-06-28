@@ -374,6 +374,11 @@ function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
         filtered = filtered.filter(r => (r.home||'').toLowerCase().includes(q) || (r.away||'').toLowerCase().includes(q));
     }
 
+    if (!filtered.length) {
+        container.innerHTML = '<p class="text-zinc-500 text-center mt-16">Sin resultados</p>';
+        return;
+    }
+
     // Botón IA
     const todayKey = new Date().toLocaleDateString('es-CL',{timeZone:getTZ()});
     let matches = filtered.filter(r=>{ const d=parseDate(r.date); return d&&getLocalDayKey(d)===todayKey; });
@@ -409,7 +414,19 @@ function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
             const lg=document.createElement('div'); lg.className='flex items-center gap-2 mb-3 ml-1 px-2';
             lg.innerHTML=`<span class="league-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${ln}</span><span class="text-zinc-600 text-xs">${lm.length} partidos</span>`;
             wrap.appendChild(lg);
-            lm.forEach(r=>{ const mid=(r.home||'')+'|'+(r.away||'')+'|'+(r.date||''); wrap.appendChild(buildCard(sport,r,color,mid,cardIdx)); cardIdx++; });
+            lm.forEach(r=>{
+                try {
+                    const mid=(r.home||'')+'|'+(r.away||'')+'|'+(r.date||'');
+                    wrap.appendChild(buildCard(sport,r,color,mid,cardIdx));
+                    cardIdx++;
+                } catch (cardErr) {
+                    console.error('Error en card:', r, cardErr);
+                    const errDiv = document.createElement('div');
+                    errDiv.className = 'bg-red-900/20 border border-red-800 rounded-xl p-3 mb-2 text-xs text-red-400';
+                    errDiv.textContent = `Error: ${r.home||'?'} vs ${r.away||'?'} — ${cardErr.message}`;
+                    wrap.appendChild(errDiv);
+                }
+            });
         });
     });
 
