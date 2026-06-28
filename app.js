@@ -88,12 +88,12 @@ function normalize(str) {
 
 // ===== Autenticación con backend =====
 
-async function authenticate(password) {
+async function authenticate() {
     try {
         const res = await fetch('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
+            body: JSON.stringify({})
         });
 
         if (!res.ok) {
@@ -129,27 +129,21 @@ function goToNext() {
     if (isTokenValid() && Object.keys(allData).length > 0) {
         showApp(Object.keys(allData));
     } else {
-        document.getElementById('uploadScreen').classList.remove('hidden');
+        // Obtener token automático y saltar a carga de Excel
+        authenticate().then(() => loadExcel()).catch(() => {
+            document.getElementById('uploadScreen').classList.remove('hidden');
+        });
     }
 }
 
 async function checkPassword() {
-    const input = document.getElementById('passwordInput');
-    const v = input.value.trim();
-
-    if (!v) {
-        showToast('Ingresa la contraseña', true);
-        return;
-    }
-
+    // Ya no se necesita contraseña, acceso directo
     try {
-        await authenticate(v);
+        await authenticate();
         showToast('✅ Acceso concedido');
         loadExcel();
     } catch (err) {
-        showToast('❌ ' + (err.message || 'Clave incorrecta'), true);
-        input.value = '';
-        input.focus();
+        showToast('❌ Error de conexión', true);
     }
 }
 
