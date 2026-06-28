@@ -396,7 +396,7 @@ function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
     if (matchCount>0 && sport==='soccer') {
         const bw = document.createElement('div'); bw.className='px-4 pt-4';
         bw.innerHTML=`<button id="btnAnalizarHoy" class="shimmer w-full py-4 bg-yellow-400 text-black font-extrabold rounded-2xl text-base">🤖 Analizar Hoy con IA (${matchCount} partidos)</button><div id="analisisHoyResult" class="mt-3"></div>`;
-        container.insertBefore(bw, container.firstChild.nextSibling || null);
+        container.appendChild(bw);
         document.getElementById('btnAnalizarHoy').onclick=function(){
             const checks=document.querySelectorAll('.match-check:checked');
             let seleccion=filtered;
