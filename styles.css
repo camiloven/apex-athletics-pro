@@ -1,0 +1,170 @@
+/* ===== Apex Athletics Pro — Estilos ===== */
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #09090b;
+    color: white;
+    margin: 0;
+}
+
+/* Hero / Intro */
+.hero {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+.hero video {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    filter: brightness(0.45);
+}
+.neon {
+    text-shadow: 0 0 30px #eab308, 0 0 60px #eab308;
+}
+
+/* Cards */
+.card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card:hover {
+    transform: translateY(-2px);
+    border-color: #3f3f46;
+}
+.best {
+    border: 2px solid #22c55e !important;
+    box-shadow: 0 0 16px rgba(34, 197, 94, 0.4);
+}
+
+/* Tabs deporte */
+.tabs-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 2px;
+    scrollbar-width: none;
+}
+.tabs-scroll::-webkit-scrollbar { display: none; }
+.tab-active {
+    background: #eab308 !important;
+    color: #000 !important;
+}
+
+/* Día header */
+.day-header {
+    background: linear-gradient(90deg, #1c1c1f 0%, #27272a 100%);
+    border-left: 3px solid #eab308;
+}
+
+/* Stat pills */
+.stat-pill {
+    border-radius: 12px;
+    padding: 8px 4px;
+    text-align: center;
+}
+
+/* Bottom nav */
+.nav-tab {
+    flex: 1;
+    padding: 8px 2px;
+    text-align: center;
+    font-size: 9px;
+    font-weight: bold;
+    border-top: 2px solid transparent;
+    transition: all 0.2s;
+}
+.nav-tab.active {
+    border-top-color: #eab308;
+    color: #eab308;
+}
+
+/* League badge */
+.league-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { animation: spin 1s linear infinite; }
+
+/* Error / Toast */
+.toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #27272a;
+    color: #fbbf24;
+    padding: 12px 24px;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 9999;
+    border: 1px solid #3f3f46;
+    animation: fadeInUp 0.3s ease;
+}
+.toast-error {
+    background: #7f1d1d;
+    color: #fca5a5;
+    border-color: #991b1b;
+}
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ===== Word Styles ===== */
+#wordContent h1, #wordContent h2, #wordContent h3, #wordContent h4 {
+    color: #fbbf24;
+    margin-top: 1.2em;
+    margin-bottom: 0.4em;
+}
+#wordContent h1 { font-size: 1.8rem; font-weight: 700; }
+#wordContent h2 { font-size: 1.4rem; font-weight: 600; border-bottom: 1px solid #27272a; padding-bottom: 0.3em; }
+#wordContent h3 { font-size: 1.1rem; font-weight: 600; }
+#wordContent h4 { font-size: 1rem; font-weight: 600; }
+#wordContent p { margin: 0.6em 0; line-height: 1.7; }
+#wordContent table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 0.85rem; }
+#wordContent table td, #wordContent table th { border: 1px solid #3f3f46; padding: 8px 12px; text-align: left; }
+#wordContent table th { background: #18181b; font-weight: 600; color: #fbbf24; }
+#wordContent table td { color: #d4d4d8; }
+#wordContent hr { margin: 24px 0; border: 0; border-top: 2px dashed #27272a; }
+#wordContent ul, #wordContent ol { padding-left: 24px; margin: 8px 0; }
+#wordContent li { margin: 4px 0; }
+#wordContent strong { color: #fbbf24; }
+.word-sport-badge {
+    display: inline-block;
+    background: #27272a;
+    padding: 2px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    color: #eab308;
+    margin-left: 8px;
+}
+.word-loaded { border-left: 4px solid #22c55e !important; }
+
+/* Loading overlay */
+.loading-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 80px 20px;
+    color: #71717a;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .hero h1 { font-size: 2.5rem; }
+    .stat-pill { padding: 6px 2px; }
+    .stat-pill .text-lg { font-size: 0.875rem; }
+}
