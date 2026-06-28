@@ -29,6 +29,18 @@ body.light-mode {
     --zinc-800: #f4f4f5;
     --zinc-700: #d4d4d8;
 }
+body.light-mode .search-bar input { background: #ffffff; border-color: #d4d4d8; color: #18181b; }
+body.light-mode .filter-chip { background: #ffffff; border-color: #d4d4d8; color: #71717a; }
+body.light-mode .filter-chip.active { background: rgba(234, 179, 8, 0.1); border-color: #eab308; color: #ca8a04; }
+body.light-mode .day-header { background: linear-gradient(90deg, #f4f4f5 0%, #e4e4e7 60%, rgba(234, 179, 8, 0.05) 100%); }
+body.light-mode .stat-pill { background: #f4f4f5; }
+body.light-mode .toast { background: rgba(255, 255, 255, 0.95); color: #ca8a04; border-color: #d4d4d8; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+body.light-mode .toast-error { background: rgba(254, 226, 226, 0.95); color: #991b1b; border-color: #fca5a5; }
+body.light-mode .live-card { background: #ffffff; border-color: #e4e4e7; }
+body.light-mode .h2h-popup { background: #ffffff; border-color: #e4e4e7; }
+body.light-mode .daily-summary { background: linear-gradient(135deg, rgba(234,179,8,0.08), rgba(34,197,94,0.04)); border-color: rgba(234,179,8,0.15); }
+body.light-mode .nav-tab { color: #71717a; }
+body.light-mode .nav-tab.active { color: #ca8a04; border-top-color: #eab308; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 

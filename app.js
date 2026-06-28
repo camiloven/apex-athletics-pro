@@ -11,6 +11,9 @@ let analisisSelectedMatches = [];
 let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
 let countdownInterval = null;
 let autoRefreshInterval = null;
+const _todayKey = 'apiRequests_' + new Date().toISOString().split('T')[0];
+let apiRequestCount = parseInt(localStorage.getItem(_todayKey) || '0');
+let teamLogoCache = JSON.parse(localStorage.getItem('teamLogoCache') || '{}');
 let currentTheme = localStorage.getItem("theme") || "dark";
 let userTimezone = localStorage.getItem('userTimezone') || 'auto';
 const DETECTED_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -56,9 +59,23 @@ function showToast(msg, isError = false) {
 
 function parseDate(str) {
     if (!str) return null;
-    const m = String(str).trim().match(/^(\d+)\.(\d+)\.(\d{4})(?:\s+(\d+):(\d+))?/);
-    if (!m) return null;
-    return new Date(Date.UTC(+m[3], +m[2]-1, +m[1], +m[4]||0, +m[5]||0));
+    const s = String(str).trim();
+    // Formato DD.MM.YYYY o DD.MM.YYYY HH:MM
+    const m = s.match(/^(\d+)\.(\d+)\.(\d{4})(?:\s+(\d+):(\d+))?/);
+    if (m) return new Date(Date.UTC(+m[3], +m[2]-1, +m[1], +m[4]||0, +m[5]||0));
+    // Formato YYYY-MM-DD o YYYY-MM-DDTHH:MM
+    const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2}))?/);
+    if (iso) return new Date(Date.UTC(+iso[1], +iso[2]-1, +iso[3], +iso[4]||0, +iso[5]||0));
+    // Formato DD/MM/YYYY
+    const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (slash) return new Date(Date.UTC(+slash[3], +slash[2]-1, +slash[1]));
+    // Número serial de Excel (días desde 1900-01-01)
+    const num = parseFloat(s);
+    if (!isNaN(num) && num > 40000 && num < 60000) {
+        const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+        return new Date(excelEpoch.getTime() + num * 86400000);
+    }
+    return null;
 }
 
 function getLocalTime(date) {
@@ -87,6 +104,7 @@ function getLocalDayLabel(date) {
 
 function pct(val) { return Math.round((parseFloat(val)||0)*100); }
 function normalize(str) { return String(str||'').toLowerCase().replace(/[^a-z0-9]/g,'').trim(); }
+function escapeAttr(str) { return String(str||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function pctClass(v) {
     if (v >= 65) return 'pct-high';
@@ -378,7 +396,7 @@ function renderPronos(sport, data) {
             </div>
             <div class="flex gap-2 overflow-x-auto pb-1" id="leagueFilters">
                 <span class="filter-chip active" onclick="filterByLeague('all', this)">Todos</span>
-                ${leagues.map(l=>`<span class="filter-chip" onclick="filterByLeague('${l.replace(/'/g,"\\'")}', this)">${l}</span>`).join('')}
+                ${leagues.map(l=>`<span class="filter-chip" data-league="${escapeAttr(l)}" onclick="filterByLeague(this.dataset.league, this)">${l}</span>`).join('')}
             </div>
         </div>`;
     container.innerHTML = searchHTML + renderDailySummary();
@@ -771,7 +789,7 @@ function renderResultadosUI(sport,data,resultados) {
         const res=resultados[i]||{marcador:'?',estado:'pendiente'};
         const fin=res.estado==='finalizado'&&res.marcador!=='?';
         let acierto=null,pron='';
-        if(fin){const p=res.marcador.split('-').map(Number);const g1=p[0]||0,g2=p[1]||0;const gan=g1>g2?'local':g2>g1?'visita':'empate';const pH=parseFloat(row['1x2_h']||0),pD=parseFloat(row['1x2_d']||0),pA=parseFloat(row['1x2_a']||0);const mx=Math.max(pH,pD||0,pA);let pg=mx===pH?'local':mx===pD?'empate':'visita';if(sport!=='soccer'&&!row['1x2_d'])pg=pH>pA?'local':'visita';acierto=pg===gan;pron='Pronó: '+(pg==='local'?row.home:pg==='visita'?row.away:'Empate');}
+        if(fin){const p=res.marcador.split('-').map(Number);const g1=p[0]||0,g2=p[1]||0;const gan=g1>g2?'local':g2>g1?'visita':'empate';const pH=parseFloat(row['1x2_h']||0),pD=parseFloat(row['1x2_d']||0),pA=parseFloat(row['1x2_a']||0);const mx=Math.max(pH,pD||0,pA);let pg=mx===pH?'local':mx===pD?'empate':'visita';if(sport!=='soccer'&&!row['1x2_d'])pg=pH>pA?'local':'visita';acierto=pg===gan;pron='Pronóstico: '+(pg==='local'?row.home:pg==='visita'?row.away:'Empate');}
         if(acierto===true)aciertos++;else if(acierto===false)errores++;else pendientes++;
         const color=leagueColorMap[row.league||'']||'#eab308';
         const timeStr=getLocalTime(parseDate(row.date));
@@ -1292,7 +1310,7 @@ function renderConfig() {
         </div>`;
     }
 
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(groqOK)} 🔑 GROQ API KEY</p><input type="text" id="inputGroq" placeholder="gsk_..." value="${groqOK||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(geminiOK)} 🔑 GEMINI API KEY</p><input type="text" id="inputGemini" placeholder="AIza..." value="${geminiOK||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(sportsOK)} ⚽ API-SPORTS KEY (resultados)</p><input type="text" id="inputSports" placeholder="Tu clave de api-sports.io" value="${sportsOK||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(fdOK)} ⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="text" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${fdOK||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(groqOK)} 🔑 GROQ API KEY</p><input type="text" id="inputGroq" placeholder="gsk_..." value="${escapeAttr(groqOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(geminiOK)} 🔑 GEMINI API KEY</p><input type="text" id="inputGemini" placeholder="AIza..." value="${escapeAttr(geminiOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(sportsOK)} ⚽ API-SPORTS KEY (resultados)</p><input type="text" id="inputSports" placeholder="Tu clave de api-sports.io" value="${escapeAttr(sportsOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(fdOK)} ⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="text" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${escapeAttr(fdOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
@@ -1349,7 +1367,7 @@ async function renderLive() {
     if (autoRefreshInterval) clearInterval(autoRefreshInterval);
     autoRefreshInterval = setInterval(() => {
         if (currentView === 'live') loadLiveScores();
-    }, 60000); // Cada 60 segundos (era 30)
+    }, 60000);
 }
 
 async function loadLiveScores() {
@@ -1386,13 +1404,13 @@ async function loadLiveScores() {
                 isLive: !['FT', 'AOT', 'PEN', 'WO', 'ABD'].includes(m.fixture?.status?.short || m.status?.short)
             }));
             allMatches = allMatches.concat(matches);
-        } catch {}
+        } catch (err) { console.warn('Live scores error:', err); }
     }
 
     if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: getTZ() });
 
     if (!allMatches.length) {
-        content.innerHTML = `<div class="text-center mt-12"><span class="text-5xl mb-4 block">😴</span><p class="text-zinc-400">No hay partidos en vivo ahora</p><p class="text-zinc-600 text-xs mt-2">Se actualiza cada 30 segundos</p></div>`;
+        content.innerHTML = `<div class="text-center mt-12"><span class="text-5xl mb-4 block">😴</span><p class="text-zinc-400">No hay partidos en vivo ahora</p><p class="text-zinc-600 text-xs mt-2">Se actualiza cada 60 segundos</p></div>`;
         return;
     }
 
@@ -1537,7 +1555,8 @@ function isFavorite(teamName) {
 
 function renderFavStar(teamName) {
     const active = isFavorite(teamName) ? 'active' : '';
-    return `<span class="fav-star ${active}" onclick="event.stopPropagation();toggleFavorite('${teamName.replace(/'/g,"\\'")}', this)" title="Favorito">⭐</span>`;
+    const escaped = teamName.replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<span class="fav-star ${active}" onclick="event.stopPropagation();toggleFavorite(this.dataset.team, this)" data-team="${escaped}" title="Favorito">⭐</span>`;
 }
 
 async function getTeamForm(teamName) {
