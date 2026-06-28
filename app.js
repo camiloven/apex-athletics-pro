@@ -259,6 +259,10 @@ function loadExcel() {
                 resultsCache = {};
                 showToast(`✅ ${Object.keys(allData).length} deporte(s) cargado(s)`);
                 showApp(Object.keys(allData));
+                // Auto-sync to backend if admin
+                if (isAdmin && localStorage.getItem('githubToken')) {
+                    exportData();
+                }
             } catch (err) {
                 console.error('Error parsing Excel:', err);
                 showToast('Error al leer Excel: ' + (err.message || 'formato inválido'), true);
@@ -1338,7 +1342,7 @@ function renderConfig() {
         </div>`;
     }
 
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(groqOK)} 🔑 GROQ API KEY</p><input type="text" id="inputGroq" placeholder="gsk_..." value="${escapeAttr(groqOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(geminiOK)} 🔑 GEMINI API KEY</p><input type="text" id="inputGemini" placeholder="AIza..." value="${escapeAttr(geminiOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(sportsOK)} ⚽ API-SPORTS KEY (resultados)</p><input type="text" id="inputSports" placeholder="Tu clave de api-sports.io" value="${escapeAttr(sportsOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(fdOK)} ⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="text" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${escapeAttr(fdOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-yellow-400 font-bold mb-2">☁️ Datos Compartidos</p><p class="text-xs text-zinc-500 mb-3">Sincroniza tus pronósticos para que otros usuarios los vean</p><button onclick="exportData()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm transition mb-2">📤 Exportar datos (JSON)</button><button onclick="loadFromBackend()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-sm transition mb-2">📥 Cargar datos del servidor</button><div class="flex items-center justify-between"><p class="text-xs text-zinc-400">🔑 Modo Admin</p><div class="theme-toggle ${isAdmin?'active':''}" onclick="toggleAdmin()"><div class="toggle-dot"></div></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(groqOK)} 🔑 GROQ API KEY</p><input type="text" id="inputGroq" placeholder="gsk_..." value="${escapeAttr(groqOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(geminiOK)} 🔑 GEMINI API KEY</p><input type="text" id="inputGemini" placeholder="AIza..." value="${escapeAttr(geminiOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(sportsOK)} ⚽ API-SPORTS KEY (resultados)</p><input type="text" id="inputSports" placeholder="Tu clave de api-sports.io" value="${escapeAttr(sportsOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(fdOK)} ⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="text" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${escapeAttr(fdOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-yellow-400 font-bold mb-2">☁️ Datos Compartidos</p><p class="text-xs text-zinc-500 mb-3">Sincroniza tus pronósticos para que otros usuarios los vean</p><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GitHub Token (para sincronizar)</p><input type="password" id="inputGithub" placeholder="ghp_..." value="${escapeAttr(localStorage.getItem('githubToken')||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition mb-3"></div><button onclick="exportData()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm transition mb-2">📤 Sincronizar al servidor</button><button onclick="loadFromBackend()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-sm transition mb-2">📥 Cargar datos del servidor</button><div class="flex items-center justify-between"><p class="text-xs text-zinc-400">🔑 Modo Admin</p><div class="theme-toggle ${isAdmin?'active':''}" onclick="toggleAdmin()"><div class="toggle-dot"></div></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
@@ -1346,6 +1350,8 @@ function saveConfig() {
     localStorage.setItem('geminiKey',document.getElementById('inputGemini').value.trim());
     localStorage.setItem('sportsKey',document.getElementById('inputSports').value.trim());
     localStorage.setItem('fdOrgKey',document.getElementById('inputFdOrg').value.trim());
+    const ghToken = document.getElementById('inputGithub').value.trim();
+    if (ghToken) localStorage.setItem('githubToken', ghToken);
     const newTz = document.getElementById('inputTimezone').value;
     if (newTz !== userTimezone) {
         userTimezone = newTz;
@@ -1364,23 +1370,62 @@ function toggleAdmin() {
 }
 
 // ===== Backend Sync =====
-function exportData() {
+async function exportData() {
+    const token = localStorage.getItem('githubToken');
+    if (!token) {
+        showToast('🔑 Necesitas configurar tu GitHub Token en Config', true);
+        return;
+    }
+    
     const data = {
         sports: allData,
-        exportedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         version: 1
     };
     const json = JSON.stringify(data, null, 2);
+    const b64 = btoa(unescape(encodeURIComponent(json)));
     
-    // Try clipboard first
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(json).then(() => {
-            showToast('📋 Datos copiados al portapéguenlos en GitHub (data/predictions.json)');
-        }).catch(() => {
-            downloadJSON(json);
+    try {
+        showToast('⏳ Sincronizando con el servidor...');
+        
+        // Get current file SHA
+        let sha = null;
+        try {
+            const res = await fetch('https://api.github.com/repos/camiloven/apex-athletics-pro/contents/data/predictions.json', {
+                headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' }
+            });
+            if (res.ok) {
+                const fileData = await res.json();
+                sha = fileData.sha;
+            }
+        } catch {}
+        
+        // Create or update file
+        const body = {
+            message: 'Update predictions from app',
+            content: b64,
+            branch: 'main'
+        };
+        if (sha) body.sha = sha;
+        
+        const res = await fetch('https://api.github.com/repos/camiloven/apex-athletics-pro/contents/data/predictions.json', {
+            method: 'PUT',
+            headers: {
+                'Authorization': 'token ' + token,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
         });
-    } else {
-        downloadJSON(json);
+        
+        if (res.ok) {
+            showToast('✅ Datos sincronizados — todos los usuarios verán los nuevos pronósticos');
+        } else {
+            const err = await res.json();
+            showToast('❌ Error: ' + (err.message || 'Token inválido'), true);
+        }
+    } catch (err) {
+        showToast('❌ Error de conexión: ' + err.message, true);
     }
 }
 
