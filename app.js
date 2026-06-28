@@ -173,9 +173,8 @@ function goToNext() {
         if (!isTokenValid()) authenticate().catch(()=>{});
         showApp(Object.keys(allData));
     } else {
-        authenticate().then(()=>loadExcel()).catch(()=>{
-            document.getElementById('uploadScreen').classList.remove('hidden');
-        });
+        document.getElementById('uploadScreen').classList.remove('hidden');
+        authenticate().then(()=>loadExcel()).catch(()=>{});
     }
 }
 
