@@ -1500,11 +1500,11 @@ async function loadTeamLogos() {
 
     if (!teams.length) { updateCardLogos(); return; }
 
-    // Solo 5 logos por carga para ahorrar requests
-    if (!canMakeRequest()) return;
-    const teamArr = [...teams].slice(0, 5);
+    // Solo cargar logos si tenemos presupuesto holgado (ahorrar requests)
+    if (!canMakeRequest() || getRemainingRequests() < 30) return;
+    const teamArr = [...teams].slice(0, 2);
     for (const t of teamArr) {
-        if (!canMakeRequest()) break;
+        if (!canMakeRequest() || getRemainingRequests() < 20) break;
         await getTeamLogo(t);
     }
 
@@ -1580,7 +1580,7 @@ function renderFavStar(teamName) {
 
 async function getTeamForm(teamName) {
     if (teamFormCache[teamName]) return teamFormCache[teamName];
-    if (!canMakeRequest()) return null;
+    if (!canMakeRequest() || getRemainingRequests() < 10) return null;
     const apiKey = localStorage.getItem('sportsKey') || '';
     if (!apiKey) return null;
 
@@ -1633,11 +1633,12 @@ function renderFormBadge(formData, teamName) {
 
 async function addFormToCards() {
     const cards = document.querySelectorAll('.card[data-home][data-away]');
-    // Solo cargar forma para 5 equipos nuevos (ahorrar requests)
+    // Solo cargar forma si tenemos presupuesto holgado
+    if (!canMakeRequest() || getRemainingRequests() < 40) { showApiBudget(); return; }
     let loaded = 0;
     for (const card of cards) {
-        if (loaded >= 5) break;
-        if (!canMakeRequest()) break;
+        if (loaded >= 2) break;
+        if (!canMakeRequest() || getRemainingRequests() < 20) break;
         const home = card.dataset.home;
         const away = card.dataset.away;
         if (!home || !away) continue;
