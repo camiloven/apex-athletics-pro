@@ -1291,16 +1291,27 @@ async function renderStandings() {
         return;
     }
 
-    // Buscar ligas únicas del Excel
+    // Buscar ligas únicas del Excel (solo las que probablemente tengan standings)
     const allLeagues = [];
     Object.values(allData).forEach(rows => {
         rows.forEach(r => { if (r.league) allLeagues.push(r.league); });
     });
-    const uniqueLeagues = [...new Set(allLeagues)].slice(0, 10);
+    // Filtrar ligas juveniles/reservas que probablemente no tengan standings
+    const skipWords = ['u20','u21','u22','u23','youth','reserve','reserves','women','womens','u19','u17','u15'];
+    const uniqueLeagues = [...new Set(allLeagues)].filter(l => {
+        const lower = l.toLowerCase();
+        return !skipWords.some(w => lower.includes(w));
+    }).slice(0, 15);
 
     if (!uniqueLeagues.length) {
-        container.innerHTML = `<div class="p-4 text-center mt-16"><p class="text-zinc-400">Sin ligas para mostrar</p></div>`;
-        return;
+        // Si todas son juveniles, mostrar todas
+        const allUnique = [...new Set(allLeagues)].slice(0, 15);
+        if (!allUnique.length) {
+            container.innerHTML = `<div class="p-4 text-center mt-16"><p class="text-zinc-400">Sin ligas para mostrar</p></div>`;
+            return;
+        }
+        // Usar todas
+        uniqueLeagues.push(...allUnique);
     }
 
     container.innerHTML = `<div class="p-4 view-fade-enter">
@@ -1318,7 +1329,6 @@ async function renderStandings() {
 }
 
 async function loadStandings(leagueName, chip) {
-    // Actualizar chips
     document.querySelectorAll('#standingsTabs .filter-chip').forEach(c => c.classList.remove('active'));
     if (chip) chip.classList.add('active');
 
@@ -1327,27 +1337,66 @@ async function loadStandings(leagueName, chip) {
     container.innerHTML = `<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div></div>`;
 
     try {
-        // Buscar la liga en api-sports
-        const searchRes = await fetch(`https://v3.football.api-sports.io/leagues?search=${encodeURIComponent(leagueName.split(' - ')[0])}`, { headers: { 'x-apisports-key': apiKey } });
-        const searchData = await searchRes.json();
-        const league = searchData.response?.[0];
+        // Separar país y liga
+        const parts = leagueName.split(' - ');
+        const country = parts[0]?.trim() || '';
+        const league = parts[1]?.trim() || leagueName;
 
-        if (!league) {
-            container.innerHTML = `<p class="text-zinc-500 text-center p-4">No se encontró la liga "${leagueName}"</p>`;
+        // Buscar liga: intentar con nombre completo primero, luego solo la liga
+        let leagueData = null;
+        const searches = [leagueName, league, country + ' ' + league];
+
+        for (const query of searches) {
+            if (leagueData) break;
+            const searchRes = await fetch(`https://v3.football.api-sports.io/leagues?search=${encodeURIComponent(query)}`, { headers: { 'x-apisports-key': apiKey } });
+            const searchData = await searchRes.json();
+            const results = searchData.response || [];
+
+            // Buscar coincidencia más precisa
+            leagueData = results.find(r => {
+                const rLeague = (r.league?.name || '').toLowerCase();
+                const rCountry = (r.country?.name || '').toLowerCase();
+                return rLeague.includes(league.toLowerCase()) || league.toLowerCase().includes(rLeague);
+            }) || results[0];
+        }
+
+        if (!leagueData) {
+            container.innerHTML = `<div class="text-center p-8"><p class="text-zinc-400 mb-2">No se encontró la liga</p><p class="text-zinc-600 text-xs">"${leagueName}"</p><p class="text-zinc-600 text-xs mt-2">Api-sports.io no tiene standings para esta liga</p></div>`;
             return;
         }
 
         const season = new Date().getFullYear();
-        const standRes = await fetch(`https://v3.football.api-sports.io/standings?league=${league.league.id}&season=${season}`, { headers: { 'x-apisports-key': apiKey } });
+        const standRes = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueData.league.id}&season=${season}`, { headers: { 'x-apisports-key': apiKey } });
         const standData = await standRes.json();
         const standings = standData.response?.[0]?.league?.standings?.[0] || [];
 
         if (!standings.length) {
-            container.innerHTML = `<p class="text-zinc-500 text-center p-4">Sin standings para ${leagueName}</p>`;
+            // Intentar con season anterior
+            const standRes2 = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueData.league.id}&season=${season - 1}`, { headers: { 'x-apisports-key': apiKey } });
+            const standData2 = await standRes2.json();
+            const standings2 = standData2.response?.[0]?.league?.standings?.[0] || [];
+
+            if (!standings2.length) {
+                container.innerHTML = `<div class="text-center p-8"><p class="text-zinc-400 mb-2">Sin standings disponibles</p><p class="text-zinc-600 text-xs">Liga: ${leagueData.league.name} (${leagueData.country?.name})</p><p class="text-zinc-600 text-xs">Temporada ${season} y ${season-1} sin datos</p></div>`;
+                return;
+            }
+            renderStandingsTable(container, standings2, leagueData, season - 1);
             return;
         }
 
-        container.innerHTML = `<div class="overflow-x-auto">
+        renderStandingsTable(container, standings, leagueData, season);
+    } catch (err) {
+        container.innerHTML = `<p class="text-red-400 text-center p-4">Error: ${err.message}</p>`;
+    }
+}
+
+function renderStandingsTable(container, standings, leagueData, season) {
+    container.innerHTML = `
+        <div class="mb-3">
+            <p class="text-sm font-bold">${leagueData.league?.name || ''}</p>
+            <p class="text-[10px] text-zinc-500">${leagueData.country?.name || ''} · Temporada ${season}</p>
+        </div>
+        <div class="overflow-x-auto">
             <table class="standings-table">
                 <thead><tr>
                     <th>#</th><th>Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>Pts</th>
@@ -1358,7 +1407,10 @@ async function loadStandings(leagueName, chip) {
                         const posCls = pos <= 4 ? 'top' : pos <= 10 ? 'mid' : 'bottom';
                         return `<tr>
                             <td class="standings-pos ${posCls}">${pos}</td>
-                            <td class="font-bold text-xs">${s.team?.name || '?'}</td>
+                            <td class="font-bold text-xs flex items-center gap-2">
+                                ${s.team?.logo ? `<img src="${s.team.logo}" class="w-4 h-4" onerror="this.style.display='none'">` : ''}
+                                ${s.team?.name || '?'}
+                            </td>
                             <td>${s.all?.played || 0}</td>
                             <td>${s.all?.win || 0}</td>
                             <td>${s.all?.draw || 0}</td>
@@ -1371,7 +1423,4 @@ async function loadStandings(leagueName, chip) {
                 </tbody>
             </table>
         </div>`;
-    } catch (err) {
-        container.innerHTML = `<p class="text-red-400 text-center p-4">Error: ${err.message}</p>`;
-    }
 }
