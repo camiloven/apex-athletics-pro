@@ -695,28 +695,24 @@ function mapFdOrgToApiSports(match) {
 }
 
 async function fetchFootballDataOrg(dates) {
-    const apiKey = localStorage.getItem('fdOrgKey') || '';
-    if (!apiKey) return { games: [], debug: 'Sin key football-data.org' };
     if (!dates?.length) return { games: [], debug: 'Sin fechas' };
+    if (!authToken) await authenticate();
 
     let allGames = [];
     for (const date of dates) {
-        const headers = { 'X-Auth-Token': apiKey };
-        const url = `${FD_ORG_BASE}/matches?dateFrom=${date}&dateTo=${date}`;
+        const url = `/api/fd-org-proxy?dateFrom=${date}&dateTo=${date}`;
         try {
-            const res = await fetch(url, { headers });
-            if (res.status === 429) {
-                return { games: allGames, debug: `Rate limit football-data.org (${allGames.length} cargados)` };
-            }
-            if (!res.ok) continue;
+            const res = await fetch(url, {
+                headers: { 'Authorization': 'Bearer ' + authToken }
+            });
             const data = await res.json();
-            if (data.matches) {
-                allGames = allGames.concat(data.matches.map(mapFdOrgToApiSports));
+            if (data.debug) return { games: allGames, debug: data.debug };
+            if (data.response) {
+                allGames = allGames.concat(data.response.map(mapFdOrgToApiSports));
             }
         } catch (err) {
-            return { games: allGames, debug: `Error fd.org: ${err.message}` };
+            return { games: allGames, debug: `Error fd.org proxy: ${err.message}` };
         }
-        // Respetar rate limit: 10 req/min → pausa mínima
         if (dates.length > 1) await new Promise(r => setTimeout(r, 200));
     }
     return { games: allGames, debug: `${allGames.length} resultados (football-data.org)` };
