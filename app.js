@@ -805,8 +805,8 @@ async function geminiCall(imageBase64, prompt) {
 
 async function groqCall(content, maxTokens) {
     const key=localStorage.getItem('groqKey')||'';
-    if(!key) throw new Error('Sin clave Groq');
-    const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'***'+key},body:JSON.stringify({model:typeof content==='string'?'llama-3.3-70b-versatile':'llama-3.2-11b-vision-preview',max_tokens:maxTokens,messages:[{role:'user',content}]})});
+    if(!key) throw new Error('Sin clave Groq. Configúrala en ⚙️ Config');
+    const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:maxTokens,messages:[{role:'user',content}]})});
     if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||`Error Groq: ${res.status}`);}
     return (await res.json()).choices?.[0]?.message?.content||'';
 }
@@ -835,7 +835,7 @@ async function runAnalisis(){
         const resp=await groqCall('BETMINES:\n'+betTxt+'\n\nFOREBET:\n'+foreTxt+'\n\nCruza datos y genera veredicto por partido:\nPartido: Local vs Visita | Betmines: PRED | Forebet: PRED% | Veredicto: LOCAL/EMPATE/VISITA | Confianza: 50-95 | Razon: corto',1000);
         const partidos=resp.split('\n').filter(l=>l.trim().length>5).map(l=>{const g=k=>{const i=l.indexOf(k);if(i<0)return'—';const v=l.slice(i+k.length);const j=v.indexOf(' | ');return(j>=0?v.slice(0,j):v).trim();};return{partido:g('Partido:'),betmines:g('Betmines:'),forebet:g('Forebet:'),veredicto:g('Veredicto:').toUpperCase(),confianza:parseInt(g('Confianza:'))||70,razon:g('Razon:')};});
         renderAnalisisResult(partidos);
-    }catch(e){result.innerHTML=`<div class="text-center mt-8"><p class="text-red-400 text-sm mb-4">${e.message}</p><button onclick="runAnalisis()" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;}
+    }catch(e){result.innerHTML=`<div class="text-center mt-8"><div class="text-4xl mb-3">⚠️</div><p class="text-zinc-400 mb-2">Error en el análisis</p><p class="text-red-400 text-sm mb-4">${e.message}</p><p class="text-zinc-600 text-xs mb-4">Verifica tu clave Groq en ⚙️ Config</p><button onclick="runAnalisis()" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;}
 }
 
 function renderAnalisisResult(partidos){
@@ -850,7 +850,7 @@ function renderAnalisisResult(partidos){
 
 // ===== Analizar hoy =====
 async function analizarHoy(sport,data,sel){
-    if(!localStorage.getItem('groqKey')){showToast('Configura Groq',true);return;}
+    if(!localStorage.getItem('groqKey')){showToast('Configura tu clave Groq en ⚙️ Config',true);return;}
     let hoy,totalDia;
     if(sel){hoy=data;totalDia=data.length;}else{
         const tk=new Date().toLocaleDateString('es-CL',{timeZone:getTZ()});
