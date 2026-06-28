@@ -518,6 +518,20 @@ async function fetchRealResults(sport, dates) {
     if (!apiKey) return { games: [], debug: 'Sin API key. Configúrala en ⚙️ Config' };
     if (!dates?.length) return { games: [], debug: 'Sin fechas' };
 
+    // Filtrar fechas: plan free solo permite hoy ±2 días
+    const today = new Date();
+    const minDate = new Date(today); minDate.setDate(today.getDate() - 2);
+    const maxDate = new Date(today); maxDate.setDate(today.getDate() + 2);
+    const validDates = dates.filter(d => {
+        const parts = d.split('-');
+        const dt = new Date(+parts[0], +parts[1]-1, +parts[2]);
+        return dt >= minDate && dt <= maxDate;
+    });
+
+    if (!validDates.length) {
+        return { games: [], debug: 'Fechas fuera de rango (plan free: hoy ±2 días). Fechas en Excel: ' + dates.join(', ') };
+    }
+
     const endpoints = {
         soccer: 'https://v3.football.api-sports.io/fixtures?date=',
         basketball: 'https://v1.basketball.api-sports.io/games?date=',
@@ -527,20 +541,22 @@ async function fetchRealResults(sport, dates) {
         tennis: 'https://v1.tennis.api-sports.io/games?date='
     };
 
-    const url = (endpoints[sport] || endpoints.soccer) + dates[0];
-
-    try {
-        const res = await fetch(url, { headers: { 'x-apisports-key': apiKey } });
-        const data = await res.json();
-
-        if (data.errors && Object.keys(data.errors).length) {
-            return { games: [], debug: 'API error: ' + JSON.stringify(data.errors) };
+    let allGames = [];
+    for (const date of validDates) {
+        const url = (endpoints[sport] || endpoints.soccer) + date;
+        try {
+            const res = await fetch(url, { headers: { 'x-apisports-key': apiKey } });
+            const data = await res.json();
+            if (data.errors && Object.keys(data.errors).length) {
+                return { games: [], debug: 'API error: ' + JSON.stringify(data.errors) };
+            }
+            if (data.response) allGames = allGames.concat(data.response);
+        } catch (err) {
+            return { games: [], debug: 'Error: ' + err.message };
         }
-
-        return { games: data.response || [], debug: data.results + ' resultados de API' };
-    } catch (err) {
-        return { games: [], debug: 'Error: ' + err.message };
     }
+
+    return { games: allGames, debug: allGames.length + ' resultados de ' + validDates.length + ' fecha(s)' };
 }
 
 function findMatch(row, apiGames) {
