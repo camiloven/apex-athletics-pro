@@ -547,7 +547,26 @@ async function renderResultados(sport) {
     const cacheKey=sport+'_'+(data[0]?.date||'');
     if(resultsCache[cacheKey]){renderResultadosUI(sport,data,resultsCache[cacheKey]);return;}
     const dates=[...new Set(data.slice(0,20).map(r=>{const m=String(r.date||'').match(/(\d+)\.(\d+)\.(\d{4})/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):'';}).filter(Boolean))];
+    
+    if (!dates.length) {
+        container.innerHTML='<p class="text-zinc-500 text-center mt-16">No se encontraron fechas válidas</p>';
+        return;
+    }
+
     const apiGames=await fetchRealResults(sport,dates);
+    
+    // Debug info si no hay resultados
+    if (!apiGames.length) {
+        container.innerHTML=`<div class="p-4 text-center mt-16">
+            <p class="text-zinc-400 mb-2">Sin resultados de la API</p>
+            <p class="text-zinc-600 text-xs">Deporte: ${sport}</p>
+            <p class="text-zinc-600 text-xs">Fechas consultadas: ${dates.join(', ')}</p>
+            <p class="text-zinc-600 text-xs mb-4">Partidos en Excel: ${data.length}</p>
+            <button onclick="resultsCache={};renderResultados('${sport}')" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">🔄 Reintentar</button>
+        </div>`;
+        return;
+    }
+
     const resultados=data.slice(0,20).map(row=>{
         const g=findMatch(row,apiGames);
         if(!g)return{marcador:'?',estado:'pendiente'};
