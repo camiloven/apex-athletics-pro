@@ -312,7 +312,7 @@ function switchSport(sport) {
 
 function switchView(view) {
     currentView = view;
-    const views = ['pronos','resultados','analisis','historial','standings','fuentes','config','word'];
+    const views = ['pronos','live','resultados','analisis','historial','standings','fuentes','config','word'];
     views.forEach(v => {
         const btn = document.getElementById('nav'+v.charAt(0).toUpperCase()+v.slice(1));
         if (btn) { btn.classList.toggle('active', v===view); btn.classList.toggle('text-yellow-400', v===view); btn.classList.toggle('text-zinc-400', v!==view); }
@@ -324,7 +324,7 @@ function switchView(view) {
     // Detener auto-refresh si no estamos en resultados
     if (view !== 'resultados' && autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
     if (view==='pronos') { st.style.display=''; if(currentSport) renderPronos(currentSport, allData[currentSport]||[]); else if(Object.keys(allData).length) switchSport(Object.keys(allData)[0]); }
-    else { st.style.display='none'; if(view==='resultados'&&currentSport) renderResultados(currentSport); else if(view==='analisis') renderAnalisis(); else if(view==='historial') renderHistorial(); else if(view==='standings') renderStandings(); else if(view==='fuentes') renderFuentes(); else if(view==='config') renderConfig(); else if(view==='word') renderWord(); }
+    else { st.style.display='none'; if(view==='live') renderLive(); else if(view==='resultados'&&currentSport) renderResultados(currentSport); else if(view==='analisis') renderAnalisis(); else if(view==='historial') renderHistorial(); else if(view==='standings') renderStandings(); else if(view==='fuentes') renderFuentes(); else if(view==='config') renderConfig(); else if(view==='word') renderWord(); }
     window.scrollTo(0,0);
 }
 
@@ -451,6 +451,8 @@ function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
     if (!filtered.length) wrap.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin resultados</p>';
     container.appendChild(wrap);
     requestAnimationFrame(observeCards);
+    // Cargar forma de equipos (solo soccer)
+    if (sport === 'soccer') addFormToCards();
 
     } catch (err) {
         console.error('Error renderizando partidos:', err);
@@ -477,11 +479,13 @@ function buildCard(sport, row, leagueColor, matchId, index) {
     const div=document.createElement('div');
     div.className='card bg-zinc-900 rounded-2xl p-4 mb-3 border border-zinc-800';
     div.style.transitionDelay=(index*0.03)+'s';
+    div.dataset.home = row.home || '';
+    div.dataset.away = row.away || '';
     // H2H click para soccer
     if (sport === 'soccer' && row.home && row.away) {
         div.style.cursor = 'pointer';
         div.addEventListener('click', (e) => {
-            if (e.target.classList.contains('match-check')) return; // No activar al checkear
+            if (e.target.classList.contains('match-check')) return;
             showH2H(row.home, row.away);
         });
     }
@@ -507,7 +511,7 @@ function buildCard(sport, row, leagueColor, matchId, index) {
                 ${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}
             </div>
             <div class="grid grid-cols-3 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(d,'Empate')}${dynamicPill(a,'Visita')}</div>
-            <div class="grid grid-cols-3 gap-2 mt-2">${dynamicPill(o25,'Más 2.5')}${dynamicPill(u25,'Menos 2.5')}${dynamicPill(u35,'Menos 3.5')}</div>`;
+            <div class="grid grid-cols-3 gap-2 mt-2">${dynamicPill(o25,'Más 2.5')}${dynamicPill(u25,'Menos 2.5')}${dynamicPill(u35,'Menos 3.5')}</div><div class="form-container mt-2"></div>`;
     } else if (sport==='tennis') {
         div.innerHTML=`<div class="flex justify-between items-start mb-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}</div>${cdHTML}<div class="grid grid-cols-2 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(a,'Visita')}</div><div class="grid grid-cols-2 gap-2 mt-2">${dynamicPill(pct(row['o_2.5']),'Más 2.5')}${dynamicPill(pct(row['u_2.5']),'Menos 2.5')}</div>`;
     } else {
@@ -919,6 +923,186 @@ function renderWord() {
     document.getElementById('wordFileInput').onchange=function(e){const file=e.target.files[0];if(!file)return;const cs=select.value;document.getElementById('wordStatus').innerHTML='⏳ Procesando...';const r=new FileReader();r.onload=function(ev){mammoth.convertToHtml({arrayBuffer:ev.target.result}).then(res=>{wordContents[cs]=res.value;document.getElementById('wordContent').innerHTML=res.value;document.getElementById('wordFileName').innerHTML=`📄 ${file.name} (${cs})`;document.getElementById('wordStatus').innerHTML='✅';const opt=select.querySelector(`option[value="${cs}"]`);if(opt){const l=opt.textContent.replace(' ✅','');opt.textContent=l+' ✅';}}).catch(err=>{document.getElementById('wordContent').innerHTML=`<div class="text-red-400 p-8 text-center">❌ ${err.message}</div>`;});};r.readAsArrayBuffer(file);};
     const init=select?select.value:(sports[0]||'soccer');
     if(wordContents[init]){document.getElementById('wordContent').innerHTML=wordContents[init];document.getElementById('wordFileName').innerHTML=`📄 ${init} (cargado)`;}
+}
+
+// ===== Live Scores Globales =====
+async function renderLive() {
+    const container = document.getElementById('mainContent');
+    const apiKey = localStorage.getItem('sportsKey') || '';
+    if (!apiKey) {
+        container.innerHTML = `<div class="p-4 text-center mt-16"><span class="text-5xl mb-4 block">🔴</span><p class="text-zinc-400 mb-2">Necesitás la API-SPORTS KEY</p><p class="text-zinc-600 text-xs">Configurala en ⚙️ Config</p></div>`;
+        return;
+    }
+
+    container.innerHTML = `<div class="p-4 view-fade-enter">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-extrabold text-yellow-400">🔴 En Vivo</h2>
+            <span id="liveRefresh" class="text-xs text-zinc-500"></span>
+        </div>
+        <div id="liveContent">
+            <div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Buscando partidos en vivo...</p></div>
+        </div>
+    </div>`;
+
+    loadLiveScores();
+    // Auto-refresh cada 30s
+    if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+    autoRefreshInterval = setInterval(() => {
+        if (currentView === 'live') loadLiveScores();
+    }, 30000);
+}
+
+async function loadLiveScores() {
+    const apiKey = localStorage.getItem('sportsKey') || '';
+    const content = document.getElementById('liveContent');
+    const refreshEl = document.getElementById('liveRefresh');
+    if (!content || !apiKey) return;
+
+    const sports = [
+        { key: 'football', label: '⚽ Fútbol', endpoint: 'v3.football.api-sports.io', path: 'fixtures?live=all' },
+        { key: 'basketball', label: '🏀 Básquetbol', endpoint: 'v1.basketball.api-sports.io', path: 'games?live=all' },
+        { key: 'tennis', label: '🎾 Tenis', endpoint: 'v1.tennis.api-sports.io', path: 'games?live=all' },
+        { key: 'hockey', label: '🏒 Hockey', endpoint: 'v1.hockey.api-sports.io', path: 'games?live=all' }
+    ];
+
+    let allMatches = [];
+
+    for (const sport of sports) {
+        try {
+            const res = await fetch(`https://${sport.endpoint}/${sport.path}`, { headers: { 'x-apisports-key': apiKey } });
+            const data = await res.json();
+            const matches = (data.response || []).map(m => ({
+                sport: sport.label,
+                home: m.teams?.home?.name || m.teams?.home?.player || '?',
+                away: m.teams?.away?.name || m.teams?.away?.player || '?',
+                homeLogo: m.teams?.home?.logo || '',
+                awayLogo: m.teams?.away?.logo || '',
+                score: sport.key === 'football'
+                    ? `${m.goals?.home ?? 0}-${m.goals?.away ?? 0}`
+                    : m.scores ? `${m.scores?.home?.total ?? m.scores?.home?.quarter ?? 0}-${m.scores?.away?.total ?? m.scores?.away?.quarter ?? 0}` : '?-?',
+                minute: m.fixture?.status?.elapsed ? `${m.fixture.status.elapsed}'` : (m.fixture?.status?.short || ''),
+                league: m.league?.name || '',
+                country: m.league?.country || '',
+                isLive: !['FT', 'AOT', 'PEN', 'WO', 'ABD'].includes(m.fixture?.status?.short || m.status?.short)
+            }));
+            allMatches = allMatches.concat(matches);
+        } catch {}
+    }
+
+    if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: getTZ() });
+
+    if (!allMatches.length) {
+        content.innerHTML = `<div class="text-center mt-12"><span class="text-5xl mb-4 block">😴</span><p class="text-zinc-400">No hay partidos en vivo ahora</p><p class="text-zinc-600 text-xs mt-2">Se actualiza cada 30 segundos</p></div>`;
+        return;
+    }
+
+    // Agrupar por deporte
+    const bySport = {};
+    allMatches.forEach(m => {
+        if (!bySport[m.sport]) bySport[m.sport] = [];
+        bySport[m.sport].push(m);
+    });
+
+    let html = `<p class="text-xs text-zinc-500 mb-3">${allMatches.length} partidos en vivo · Auto-refresh 30s</p>`;
+
+    Object.entries(bySport).forEach(([sportName, matches]) => {
+        html += `<p class="text-xs text-yellow-400 font-bold mb-2 mt-4">${sportName} (${matches.length})</p>`;
+        matches.forEach(m => {
+            const minuteClass = m.minute.includes("'") ? '' : 'ft';
+            html += `<div class="live-card">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold">${m.home}</span>
+                            <span class="live-score text-yellow-400">${m.score}</span>
+                            <span class="text-xs font-bold">${m.away}</span>
+                        </div>
+                        <p class="text-[10px] text-zinc-500 mt-1">${m.league}</p>
+                    </div>
+                    <span class="live-minute ${minuteClass}">${m.isLive ? '<span class="live-dot"></span>' : ''}${m.minute}</span>
+                </div>
+            </div>`;
+        });
+    });
+
+    content.innerHTML = html;
+}
+
+// ===== Team Form (últimos 5 resultados) =====
+let teamFormCache = {};
+
+async function getTeamForm(teamName) {
+    if (teamFormCache[teamName]) return teamFormCache[teamName];
+    const apiKey = localStorage.getItem('sportsKey') || '';
+    if (!apiKey) return null;
+
+    try {
+        // Buscar equipo
+        const searchRes = await fetch(`https://v3.football.api-sports.io/teams?search=${encodeURIComponent(teamName)}`, { headers: { 'x-apisports-key': apiKey } });
+        const searchData = await searchRes.json();
+        const team = searchData.response?.[0]?.team;
+        if (!team) return null;
+
+        // Últimos 5 partidos
+        const fixturesRes = await fetch(`https://v3.football.api-sports.io/fixtures?team=${team.id}&last=5`, { headers: { 'x-apisports-key': apiKey } });
+        const fixturesData = await fixturesRes.json();
+        const fixtures = fixturesData.response || [];
+
+        const form = fixtures.map(f => {
+            const isHome = f.teams?.home?.id === team.id;
+            const myGoals = isHome ? f.goals?.home : f.goals?.away;
+            const theirGoals = isHome ? f.goals?.away : f.goals?.home;
+            if (myGoals === null || theirGoals === null) return 'd';
+            if (myGoals > theirGoals) return 'w';
+            if (myGoals < theirGoals) return 'l';
+            return 'd';
+        });
+
+        const result = { form, teamId: team.id };
+        teamFormCache[teamName] = result;
+        return result;
+    } catch {
+        return null;
+    }
+}
+
+function renderFormBadge(formData, teamName) {
+    if (!formData || !formData.form || !formData.form.length) return '';
+    const dots = formData.form.map(r => `<span class="form-dot ${r}">${r.toUpperCase()}</span>`).join('');
+
+    // Detectar racha
+    let streakHTML = '';
+    const last3 = formData.form.slice(-3);
+    if (last3.length === 3 && last3.every(r => r === 'w')) {
+        streakHTML = `<span class="streak-badge win-streak">🔥 3W</span>`;
+    } else if (last3.length === 3 && last3.every(r => r === 'l')) {
+        streakHTML = `<span class="streak-badge lose-streak">❄️ 3L</span>`;
+    }
+
+    return `<div class="flex items-center gap-1"><div class="form-badge">${dots}</div>${streakHTML}</div>`;
+}
+
+async function addFormToCards() {
+    const cards = document.querySelectorAll('.card[data-home][data-away]');
+    for (const card of cards) {
+        const home = card.dataset.home;
+        const away = card.dataset.away;
+        if (!home || !away) continue;
+
+        const formDiv = card.querySelector('.form-container');
+        if (!formDiv) continue;
+
+        const [homeForm, awayForm] = await Promise.all([
+            getTeamForm(home),
+            getTeamForm(away)
+        ]);
+
+        let html = '';
+        if (homeForm) html += `<div class="flex items-center gap-1 mb-1"><span class="text-[10px] text-zinc-500 w-16 truncate">${home}</span>${renderFormBadge(homeForm, home)}</div>`;
+        if (awayForm) html += `<div class="flex items-center gap-1"><span class="text-[10px] text-zinc-500 w-16 truncate">${away}</span>${renderFormBadge(awayForm, away)}</div>`;
+
+        if (html) formDiv.innerHTML = html;
+    }
 }
 
 // ===== Init =====
