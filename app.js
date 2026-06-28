@@ -209,7 +209,10 @@ function normalizeRow(row) {
     const out = {};
     const keys = Object.keys(row);
     keys.forEach(k => {
+        // Limpiar espacios y normalizar
         const lk = k.toLowerCase().trim();
+        if (!lk) return; // Ignorar columnas sin nombre (None)
+
         // Equipo local
         if (['home','local','equipo local','home team','team 1','equipo1','home_team'].includes(lk)) {
             out.home = row[k];
@@ -230,15 +233,6 @@ function normalizeRow(row) {
         else if (['id','match id','match_id','game_id','partido_id'].includes(lk)) {
             out.id = row[k];
         }
-        // Mercados de goles - mapear todos los que existan
-        else if (lk.startsWith('o_') || lk.startsWith('u_')) {
-            // Mantener tal cual (o_2.5, u_3.25, etc.)
-            out[lk] = row[k];
-        }
-        // Asian Handicap - mantener tal cual
-        else if (lk.startsWith('ah_')) {
-            out[lk] = row[k];
-        }
         // 1X2 Home
         else if (['1x2_h','1x2 home','home win','local win','p_home','ph','prob_home','home_%','local_%','h%'].includes(lk)) {
             out['1x2_h'] = row[k];
@@ -250,6 +244,18 @@ function normalizeRow(row) {
         // 1X2 Away
         else if (['1x2_a','1x2 away','away win','visita win','p_away','pa','prob_away','away_%','visita_%','a%'].includes(lk)) {
             out['1x2_a'] = row[k];
+        }
+        // Mercados de goles (o_/u_) — solo los más comunes
+        else if (lk.startsWith('o_') || lk.startsWith('u_')) {
+            // Solo guardar mercados redondos más usados
+            const keep = ['o_1.5','o_2.5','o_3.5','u_1.5','u_2.5','u_3.5'];
+            if (keep.includes(lk)) {
+                out[lk] = row[k];
+            }
+        }
+        // Asian Handicap — guardar limpio (sin espacios)
+        else if (lk.startsWith('ah_')) {
+            out[lk] = row[k];
         }
         // Cualquier otra columna
         else {
@@ -465,24 +471,12 @@ function buildCard(sport, row, leagueColor, matchId, index) {
     const cdHTML=cd?`<span class="countdown ${cd.cls}">${cd.text}</span>`:'';
 
     if (sport==='soccer') {
-        // Encontrar mercados over/under disponibles
-        const overKeys = Object.keys(row).filter(k => k.startsWith('o_')).sort();
-        const underKeys = Object.keys(row).filter(k => k.startsWith('u_')).sort();
-        const allGoalKeys = [...new Set([...overKeys, ...underKeys])].sort();
-
         const d=pct(row['1x2_d']);
-        const best=underKeys.length ? Math.max(...underKeys.map(k=>pct(row[k]))) : 0;
+        const o15=pct(row['o_1.5']), o25=pct(row['o_2.5']), o35=pct(row['o_3.5']);
+        const u15=pct(row['u_1.5']), u25=pct(row['u_2.5']), u35=pct(row['u_3.5']);
+        const best=Math.max(u25,u35);
         if(best>55) div.classList.add('best');
         const hot=best>55?'<span class="badge-hot ml-2">🔥 HOT</span>':'';
-
-        // Stats de goles (mostrar los que existan, max 6)
-        const goalPills = allGoalKeys.slice(0,6).map(k => {
-            const label = k.replace('o_','Más ').replace('u_','Menos ');
-            const val = pct(row[k]);
-            const cls = val>=65?'pct-high':val>=50?'pct-mid':'pct-low';
-            return `<div class="stat-pill bg-zinc-800"><div class="${cls} text-lg font-bold">${val}%</div><div class="text-zinc-500 text-xs mt-0.5">${label}</div></div>`;
-        }).join('');
-        const goalCols = Math.min(allGoalKeys.length, 6);
 
         div.innerHTML=`
             <div class="flex justify-between items-start">
@@ -493,7 +487,7 @@ function buildCard(sport, row, leagueColor, matchId, index) {
                 ${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}
             </div>
             <div class="grid grid-cols-3 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(d,'Empate')}${dynamicPill(a,'Visita')}</div>
-            ${goalCols>0?`<div class="grid grid-cols-${goalCols} gap-2 mt-2">${goalPills}</div>`:''}`;
+            <div class="grid grid-cols-3 gap-2 mt-2">${dynamicPill(o25,'Más 2.5')}${dynamicPill(u25,'Menos 2.5')}${dynamicPill(u35,'Menos 3.5')}</div>`;
     } else if (sport==='tennis') {
         div.innerHTML=`<div class="flex justify-between items-start mb-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}</div>${cdHTML}<div class="grid grid-cols-2 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(a,'Visita')}</div><div class="grid grid-cols-2 gap-2 mt-2">${dynamicPill(pct(row['o_2.5']),'Más 2.5')}${dynamicPill(pct(row['u_2.5']),'Menos 2.5')}</div>`;
     } else {
@@ -735,12 +729,8 @@ async function analizarHoy(sport,data,sel){
     rd.innerHTML=`<div class="flex items-center gap-3 p-4 bg-zinc-900 rounded-2xl border border-yellow-500/30"><div class="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Analizando ${hoy.length} partidos...</p></div>`;
     const lista=hoy.map((r,i)=>{
         const h=Math.round((parseFloat(r['1x2_h']||0))*100),d=Math.round((parseFloat(r['1x2_d']||0))*100),a=Math.round((parseFloat(r['1x2_a']||0))*100);
-        // Mercados de goles dinámicos
-        const goalStats = Object.keys(r).filter(k=>k.startsWith('o_')||k.startsWith('u_')).map(k=>{
-            const label=k.replace('o_','Más ').replace('u_','Menos ');
-            return label+':'+Math.round((parseFloat(r[k]||0))*100)+'%';
-        }).join(' ');
-        return(i+1)+'. '+(r.home||'?')+' vs '+(r.away||'?')+' ['+(r.league||'')+']\n   1X2 -> Local:'+h+'% Empate:'+d+'% Visita:'+a+'%\n   Goles -> '+goalStats;
+        const o25=Math.round((parseFloat(r['o_2.5']||0))*100),u25=Math.round((parseFloat(r['u_2.5']||0))*100),u35=Math.round((parseFloat(r['u_3.5']||0))*100);
+        return(i+1)+'. '+(r.home||'?')+' vs '+(r.away||'?')+' ['+(r.league||'')+']\n   1X2 -> Local:'+h+'% Empate:'+d+'% Visita:'+a+'%\n   Goles -> Más2.5:'+o25+'% Menos2.5:'+u25+'% Menos3.5:'+u35+'%';
     }).join('\n\n');
     try{
         const texto=await groqCall('Eres analista experto. Analiza:\n\n'+lista+'\n\nPara CADA partido:\n---\nPartido: Local vs Visita\nVeredicto: resultado 1x2\nGoles: Over/Under\nConfianza: Alta/Media/Baja\nRazonamiento: 4-6 lineas\n---',4000);
