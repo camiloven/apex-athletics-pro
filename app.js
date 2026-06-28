@@ -8,6 +8,8 @@ let allData = {}, currentSport = null, currentView = 'pronos';
 let leagueColorMap = {}, resultsCache = {}, authToken = null;
 let betminesImgs = [], forebetImgs = [], wordContents = {};
 let countdownInterval = null;
+let autoRefreshInterval = null;
+let currentTheme = localStorage.getItem("theme") || "dark";
 let userTimezone = localStorage.getItem('userTimezone') || 'auto';
 const DETECTED_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -310,7 +312,7 @@ function switchSport(sport) {
 
 function switchView(view) {
     currentView = view;
-    const views = ['pronos','resultados','analisis','historial','fuentes','config','word'];
+    const views = ['pronos','resultados','analisis','historial','standings','fuentes','config','word'];
     views.forEach(v => {
         const btn = document.getElementById('nav'+v.charAt(0).toUpperCase()+v.slice(1));
         if (btn) { btn.classList.toggle('active', v===view); btn.classList.toggle('text-yellow-400', v===view); btn.classList.toggle('text-zinc-400', v!==view); }
@@ -319,8 +321,10 @@ function switchView(view) {
     const mc = document.getElementById('mainContent');
     mc.classList.add('view-fade-enter');
     setTimeout(()=>mc.classList.remove('view-fade-enter'),300);
+    // Detener auto-refresh si no estamos en resultados
+    if (view !== 'resultados' && autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
     if (view==='pronos') { st.style.display=''; if(currentSport) renderPronos(currentSport, allData[currentSport]||[]); else if(Object.keys(allData).length) switchSport(Object.keys(allData)[0]); }
-    else { st.style.display='none'; if(view==='resultados'&&currentSport) renderResultados(currentSport); else if(view==='analisis') renderAnalisis(); else if(view==='historial') renderHistorial(); else if(view==='fuentes') renderFuentes(); else if(view==='config') renderConfig(); else if(view==='word') renderWord(); }
+    else { st.style.display='none'; if(view==='resultados'&&currentSport) renderResultados(currentSport); else if(view==='analisis') renderAnalisis(); else if(view==='historial') renderHistorial(); else if(view==='standings') renderStandings(); else if(view==='fuentes') renderFuentes(); else if(view==='config') renderConfig(); else if(view==='word') renderWord(); }
     window.scrollTo(0,0);
 }
 
@@ -362,7 +366,7 @@ function renderPronos(sport, data) {
                 ${leagues.map(l=>`<span class="filter-chip" onclick="filterByLeague('${l.replace(/'/g,"\\'")}', this)">${l}</span>`).join('')}
             </div>
         </div>`;
-    container.innerHTML = searchHTML;
+    container.innerHTML = searchHTML + renderDailySummary();
 
     const contentDiv = document.createElement('div');
     contentDiv.id = 'pronosContent';
@@ -473,6 +477,14 @@ function buildCard(sport, row, leagueColor, matchId, index) {
     const div=document.createElement('div');
     div.className='card bg-zinc-900 rounded-2xl p-4 mb-3 border border-zinc-800';
     div.style.transitionDelay=(index*0.03)+'s';
+    // H2H click para soccer
+    if (sport === 'soccer' && row.home && row.away) {
+        div.style.cursor = 'pointer';
+        div.addEventListener('click', (e) => {
+            if (e.target.classList.contains('match-check')) return; // No activar al checkear
+            showH2H(row.home, row.away);
+        });
+    }
     const timeStr=getLocalTime(row._date);
     const h=pct(row['1x2_h']),a=pct(row['1x2_a']);
     const cd=getCountdown(row._date);
@@ -626,6 +638,8 @@ function renderResultadosUI(sport,data,resultados) {
     const total=aciertos+errores,pct_ac=total>0?Math.round(aciertos/total*100):0;
     wrap.innerHTML=`<div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-yellow-400 font-bold text-center mb-3">📊 Resumen</p><div class="flex items-center justify-center gap-6 mb-4">${donutChart(pct_ac,90,10)}<div class="space-y-2"><div class="flex items-center gap-2"><span class="text-green-400 text-xl font-bold">${aciertos}</span><span class="text-xs text-zinc-400">✅ Aciertos</span></div><div class="flex items-center gap-2"><span class="text-red-400 text-xl font-bold">${errores}</span><span class="text-xs text-zinc-400">❌ Errores</span></div><div class="flex items-center gap-2"><span class="text-zinc-300 text-xl font-bold">${pendientes}</span><span class="text-xs text-zinc-400">⏳ Pendientes</span></div></div></div>${total>0?`<div class="progress-bar-animated bg-zinc-800 rounded-full h-3 overflow-hidden"><div class="progress-fill bg-gradient-to-r from-green-500 to-emerald-400" style="width:0%" id="progressFill"></div></div><p class="text-center text-sm mt-2 font-bold text-green-400">${pct_ac}% de acierto</p>`:''}</div><button onclick="resultsCache={};renderResultados('${sport}')" class="shimmer w-full py-3 bg-zinc-800 text-yellow-400 rounded-2xl text-sm font-bold mb-4 hover:bg-zinc-700 transition">🔄 Actualizar</button>${cards}`;
     container.appendChild(wrap);
+    // Auto-refresh cada 60s
+    startAutoRefresh(sport);
     // Guardar historial
     saveHistory(pct_ac, aciertos, errores, pendientes);
     requestAnimationFrame(()=>{const f=document.getElementById('progressFill');if(f)setTimeout(()=>f.style.width=pct_ac+'%',100);});
@@ -875,7 +889,7 @@ function renderConfig() {
         </div>`;
     }
 
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">⚽ API-SPORTS KEY (resultados)</p><input type="password" id="inputSports" placeholder="Tu clave de api-sports.io" value="${localStorage.getItem('sportsKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}</div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">⚽ API-SPORTS KEY (resultados)</p><input type="password" id="inputSports" placeholder="Tu clave de api-sports.io" value="${localStorage.getItem('sportsKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
@@ -911,11 +925,12 @@ function renderWord() {
 window.onload=()=>{
     authToken=localStorage.getItem('authToken')||null;
     userTimezone=localStorage.getItem('userTimezone')||'auto';
+    // Aplicar tema guardado
+    if (currentTheme === 'light') document.body.classList.add('light-mode');
     try {
         const s = localStorage.getItem('apexData');
         if (s) {
             allData = JSON.parse(s);
-            // Verificar que los datos sean válidos
             if (typeof allData !== 'object' || Array.isArray(allData)) {
                 allData = {};
                 localStorage.removeItem('apexData');
@@ -926,4 +941,253 @@ window.onload=()=>{
         allData = {};
         localStorage.removeItem('apexData');
     }
+    // Mostrar resumen diario si hay datos
+    if (Object.keys(allData).length > 0) showDailySummary();
 };
+
+// ===== Theme Toggle =====
+function toggleTheme() {
+    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', currentTheme);
+    document.body.classList.toggle('light-mode');
+    playClick();
+}
+
+// ===== Daily Summary =====
+function showDailySummary() {
+    const data = allData[currentSport || Object.keys(allData)[0]] || [];
+    if (!data.length) return;
+    const todayKey = new Date().toLocaleDateString('es-CL', { timeZone: getTZ() });
+    const todayMatches = data.filter(r => { const d = parseDate(r.date); return d && getLocalDayKey(d) === todayKey; });
+    if (!todayMatches.length) return;
+    // Guardar para mostrar después de goToNext
+    window._dailyMatches = todayMatches;
+}
+
+function renderDailySummary() {
+    const matches = window._dailyMatches;
+    if (!matches || !matches.length) return '';
+    const leagues = [...new Set(matches.map(r => r.league || 'Sin liga'))];
+    return `<div class="daily-summary">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="text-lg">📅</span>
+            <p class="font-extrabold text-sm">Resumen de hoy</p>
+        </div>
+        <p class="text-xs text-zinc-400 mb-2">${matches.length} partidos en ${leagues.length} liga(s)</p>
+        <div class="flex flex-wrap gap-1">
+            ${leagues.slice(0,5).map(l => `<span class="text-[10px] bg-zinc-800 px-2 py-0.5 rounded-full text-zinc-400">${l}</span>`).join('')}
+            ${leagues.length > 5 ? `<span class="text-[10px] text-zinc-500">+${leagues.length - 5} más</span>` : ''}
+        </div>
+    </div>`;
+}
+
+// ===== Auto-refresh resultados en vivo =====
+function startAutoRefresh(sport) {
+    if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+    autoRefreshInterval = setInterval(() => {
+        if (currentView === 'resultados' && currentSport === sport) {
+            resultsCache = {}; // Limpiar cache para datos frescos
+            renderResultados(sport);
+        }
+    }, 60000); // Cada 60 segundos
+}
+
+// ===== H2H (Head to Head) =====
+async function showH2H(home, away) {
+    const apiKey = localStorage.getItem('sportsKey') || '';
+    if (!apiKey) { showToast('Configura API-SPORTS KEY en Config', true); return; }
+
+    // Crear overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'h2h-overlay';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `<div class="h2h-popup">
+        <div class="flex justify-between items-center mb-4">
+            <p class="font-extrabold text-sm">⚔️ ${home} vs ${away}</p>
+            <button onclick="this.closest('.h2h-overlay').remove()" class="text-zinc-500 text-xl">✕</button>
+        </div>
+        <div class="flex items-center gap-3 p-4 bg-zinc-800 rounded-xl">
+            <div class="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full spinner"></div>
+            <p class="text-zinc-400 text-sm">Buscando historial...</p>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+
+    try {
+        // Buscar IDs de equipos
+        const searchRes = await fetch(`https://v3.football.api-sports.io/teams?search=${encodeURIComponent(home)}`, { headers: { 'x-apisports-key': apiKey } });
+        const searchData = await searchRes.json();
+        const homeTeam = searchData.response?.[0]?.team;
+
+        const searchRes2 = await fetch(`https://v3.football.api-sports.io/teams?search=${encodeURIComponent(away)}`, { headers: { 'x-apisports-key': apiKey } });
+        const searchData2 = await searchRes2.json();
+        const awayTeam = searchData2.response?.[0]?.team;
+
+        if (!homeTeam || !awayTeam) {
+            overlay.querySelector('.h2h-popup').innerHTML = `<p class="text-zinc-400 text-center p-4">No se encontró historial H2H</p>`;
+            return;
+        }
+
+        // Buscar H2H
+        const h2hRes = await fetch(`https://v3.football.api-sports.io/fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}&last=5`, { headers: { 'x-apisports-key': apiKey } });
+        const h2hData = await h2hRes.json();
+        const fixtures = h2hData.response || [];
+
+        if (!fixtures.length) {
+            overlay.querySelector('.h2h-popup').innerHTML = `<div class="flex justify-between items-center mb-4"><p class="font-extrabold text-sm">⚔️ ${home} vs ${away}</p><button onclick="this.closest('.h2h-overlay').remove()" class="text-zinc-500 text-xl">✕</button></div><p class="text-zinc-400 text-center p-4">Sin enfrentamientos previos</p>`;
+            return;
+        }
+
+        let homeWins = 0, draws = 0, awayWins = 0;
+        const matchesHTML = fixtures.map(f => {
+            const gH = f.goals?.home ?? '?';
+            const gA = f.goals?.away ?? '?';
+            const date = f.fixture?.date ? new Date(f.fixture.date).toLocaleDateString('es-CL', { timeZone: getTZ() }) : '';
+            const league = f.league?.name || '';
+            const isHomeWinner = typeof gH === 'number' && typeof gA === 'number' && gH > gA;
+            const isDraw = typeof gH === 'number' && typeof gA === 'number' && gH === gA;
+            const isAwayWinner = typeof gH === 'number' && typeof gA === 'number' && gA > gH;
+
+            if (f.teams?.home?.name === home) {
+                if (isHomeWinner) homeWins++;
+                else if (isDraw) draws++;
+                else awayWins++;
+            } else {
+                if (isAwayWinner) homeWins++;
+                else if (isDraw) draws++;
+                else awayWins++;
+            }
+
+            return `<div class="flex items-center justify-between py-2 border-b border-zinc-800 text-xs">
+                <div class="flex-1">
+                    <p class="font-bold">${f.teams?.home?.name || '?'} <span class="text-zinc-500">${gH}-${gA}</span> ${f.teams?.away?.name || '?'}</p>
+                    <p class="text-zinc-500">${league} · ${date}</p>
+                </div>
+            </div>`;
+        }).join('');
+
+        const total = fixtures.length;
+        const hPct = Math.round(homeWins / total * 100);
+        const dPct = Math.round(draws / total * 100);
+        const aPct = Math.round(awayWins / total * 100);
+
+        overlay.querySelector('.h2h-popup').innerHTML = `
+            <div class="flex justify-between items-center mb-4">
+                <p class="font-extrabold text-sm">⚔️ ${home} vs ${away}</p>
+                <button onclick="this.closest('.h2h-overlay').remove()" class="text-zinc-500 text-xl">✕</button>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <div class="text-center bg-green-500/10 rounded-xl p-2 border border-green-500/20">
+                    <p class="text-lg font-bold text-green-400">${homeWins}</p>
+                    <p class="text-[9px] text-zinc-400">${home}</p>
+                </div>
+                <div class="text-center bg-yellow-500/10 rounded-xl p-2 border border-yellow-500/20">
+                    <p class="text-lg font-bold text-yellow-400">${draws}</p>
+                    <p class="text-[9px] text-zinc-400">Empates</p>
+                </div>
+                <div class="text-center bg-blue-500/10 rounded-xl p-2 border border-blue-500/20">
+                    <p class="text-lg font-bold text-blue-400">${awayWins}</p>
+                    <p class="text-[9px] text-zinc-400">${away}</p>
+                </div>
+            </div>
+            <p class="text-xs text-zinc-500 mb-2 font-bold">Últimos ${total} enfrentamientos</p>
+            ${matchesHTML}
+        `;
+    } catch (err) {
+        overlay.querySelector('.h2h-popup').innerHTML = `<p class="text-red-400 text-center p-4">Error: ${err.message}</p>`;
+    }
+}
+
+// ===== Standings (Tabla de posiciones) =====
+async function renderStandings() {
+    const container = document.getElementById('mainContent');
+    const apiKey = localStorage.getItem('sportsKey') || '';
+    if (!apiKey) {
+        container.innerHTML = `<div class="p-4 text-center mt-16"><p class="text-zinc-400 mb-2">Necesitás la API-SPORTS KEY</p><p class="text-zinc-600 text-xs">Configurala en ⚙️ Config</p></div>`;
+        return;
+    }
+
+    // Buscar ligas únicas del Excel
+    const allLeagues = [];
+    Object.values(allData).forEach(rows => {
+        rows.forEach(r => { if (r.league) allLeagues.push(r.league); });
+    });
+    const uniqueLeagues = [...new Set(allLeagues)].slice(0, 10);
+
+    if (!uniqueLeagues.length) {
+        container.innerHTML = `<div class="p-4 text-center mt-16"><p class="text-zinc-400">Sin ligas para mostrar</p></div>`;
+        return;
+    }
+
+    container.innerHTML = `<div class="p-4 view-fade-enter">
+        <h2 class="text-xl font-extrabold text-yellow-400 mb-4">🏆 Tabla de Posiciones</h2>
+        <div class="flex gap-2 overflow-x-auto pb-3 mb-4" id="standingsTabs">
+            ${uniqueLeagues.map((l, i) => `<button onclick="loadStandings('${l.replace(/'/g,"\\'")}', this)" class="filter-chip ${i === 0 ? 'active' : ''}">${l}</button>`).join('')}
+        </div>
+        <div id="standingsContent">
+            <div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Cargando tabla...</p></div>
+        </div>
+    </div>`;
+
+    // Cargar la primera liga
+    loadStandings(uniqueLeagues[0], document.querySelector('#standingsTabs .filter-chip'));
+}
+
+async function loadStandings(leagueName, chip) {
+    // Actualizar chips
+    document.querySelectorAll('#standingsTabs .filter-chip').forEach(c => c.classList.remove('active'));
+    if (chip) chip.classList.add('active');
+
+    const container = document.getElementById('standingsContent');
+    const apiKey = localStorage.getItem('sportsKey') || '';
+    container.innerHTML = `<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div></div>`;
+
+    try {
+        // Buscar la liga en api-sports
+        const searchRes = await fetch(`https://v3.football.api-sports.io/leagues?search=${encodeURIComponent(leagueName.split(' - ')[0])}`, { headers: { 'x-apisports-key': apiKey } });
+        const searchData = await searchRes.json();
+        const league = searchData.response?.[0];
+
+        if (!league) {
+            container.innerHTML = `<p class="text-zinc-500 text-center p-4">No se encontró la liga "${leagueName}"</p>`;
+            return;
+        }
+
+        const season = new Date().getFullYear();
+        const standRes = await fetch(`https://v3.football.api-sports.io/standings?league=${league.league.id}&season=${season}`, { headers: { 'x-apisports-key': apiKey } });
+        const standData = await standRes.json();
+        const standings = standData.response?.[0]?.league?.standings?.[0] || [];
+
+        if (!standings.length) {
+            container.innerHTML = `<p class="text-zinc-500 text-center p-4">Sin standings para ${leagueName}</p>`;
+            return;
+        }
+
+        container.innerHTML = `<div class="overflow-x-auto">
+            <table class="standings-table">
+                <thead><tr>
+                    <th>#</th><th>Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>Pts</th>
+                </tr></thead>
+                <tbody>
+                    ${standings.map(s => {
+                        const pos = s.rank;
+                        const posCls = pos <= 4 ? 'top' : pos <= 10 ? 'mid' : 'bottom';
+                        return `<tr>
+                            <td class="standings-pos ${posCls}">${pos}</td>
+                            <td class="font-bold text-xs">${s.team?.name || '?'}</td>
+                            <td>${s.all?.played || 0}</td>
+                            <td>${s.all?.win || 0}</td>
+                            <td>${s.all?.draw || 0}</td>
+                            <td>${s.all?.lose || 0}</td>
+                            <td>${s.all?.goals?.for || 0}</td>
+                            <td>${s.all?.goals?.against || 0}</td>
+                            <td class="font-extrabold">${s.points || 0}</td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>`;
+    } catch (err) {
+        container.innerHTML = `<p class="text-red-400 text-center p-4">Error: ${err.message}</p>`;
+    }
+}
