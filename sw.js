@@ -1,9 +1,9 @@
-const CACHE_NAME = 'pronos-v4';
+const CACHE_NAME = 'pronos-v5';
 const ASSETS = [
     '/',
     '/index.html',
-    '/styles.css',
-    '/app.js',
+    '/styles.css?v=4',
+    '/app.js?v=4',
     '/manifest.json'
 ];
 
@@ -20,11 +20,24 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-    // Solo cachear GET y assets estáticos
     if (e.request.method !== 'GET') return;
-    // No cachear API calls ni recursos externos
     if (e.request.url.includes('/api/') || !e.request.url.startsWith(self.location.origin)) return;
 
+    // Network-first for HTML (always get latest)
+    if (e.request.headers.get('accept')?.includes('text/html')) {
+        e.respondWith(
+            fetch(e.request).then(response => {
+                if (response.ok) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+                }
+                return response;
+            }).catch(() => caches.match(e.request))
+        );
+        return;
+    }
+
+    // Stale-while-revalidate for everything else
     e.respondWith(
         caches.match(e.request).then(cached => {
             const fetched = fetch(e.request).then(response => {
