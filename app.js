@@ -177,7 +177,11 @@ function loadExcel() {
                 wb.SheetNames.forEach(name => {
                     try {
                         const rows = XLSX.utils.sheet_to_json(wb.Sheets[name]);
-                        if (rows.length > 0) allData[name] = rows;
+                        if (rows.length > 0) {
+                            // Normalizar columnas
+                            const normalized = rows.map(row => normalizeRow(row));
+                            allData[name] = normalized;
+                        }
                     } catch (sheetErr) {
                         console.warn('Error en hoja ' + name + ':', sheetErr);
                     }
@@ -198,6 +202,64 @@ function loadExcel() {
         reader.readAsArrayBuffer(file);
     };
     input.click();
+}
+
+/** Normaliza nombres de columnas del Excel a los que espera la app */
+function normalizeRow(row) {
+    const out = {};
+    const keys = Object.keys(row);
+    keys.forEach(k => {
+        const lk = k.toLowerCase().trim();
+        // Equipo local
+        if (['home','local','equipo local','home team','team 1','equipo1','home_team'].includes(lk)) {
+            out.home = row[k];
+        }
+        // Equipo visita
+        else if (['away','visitor','visita','equipo visita','away team','team 2','equipo2','away_team'].includes(lk)) {
+            out.away = row[k];
+        }
+        // Fecha
+        else if (['date','fecha','match date','game date','dia'].includes(lk)) {
+            out.date = row[k];
+        }
+        // Liga
+        else if (['league','liga','competition','torneo','campeonato','tournament','country'].includes(lk)) {
+            out.league = row[k];
+        }
+        // 1X2 Home
+        else if (['1x2_h','1x2 home','home win','local win','p_home','ph','prob_home','home_%','local_%','h%'].includes(lk)) {
+            out['1x2_h'] = row[k];
+        }
+        // 1X2 Draw
+        else if (['1x2_d','1x2 draw','draw','empate','p_draw','pd','prob_draw','draw_%','empate_%','d%'].includes(lk)) {
+            out['1x2_d'] = row[k];
+        }
+        // 1X2 Away
+        else if (['1x2_a','1x2 away','away win','visita win','p_away','pa','prob_away','away_%','visita_%','a%'].includes(lk)) {
+            out['1x2_a'] = row[k];
+        }
+        // Over 1.5
+        else if (['o_1.5','o1.5','over 1.5','over15','o 1.5','over_1.5'].includes(lk)) {
+            out['o_1.5'] = row[k];
+        }
+        // Over 2.5
+        else if (['o_2.5','o2.5','over 2.5','over25','o 2.5','over_2.5'].includes(lk)) {
+            out['o_2.5'] = row[k];
+        }
+        // Under 2.5
+        else if (['u_2.5','u2.5','under 2.5','under25','u 2.5','under_2.5'].includes(lk)) {
+            out['u_2.5'] = row[k];
+        }
+        // Under 3.5
+        else if (['u_3.5','u3.5','under 3.5','under35','u 3.5','under_3.5'].includes(lk)) {
+            out['u_3.5'] = row[k];
+        }
+        // Cualquier otra columna, mantenerla con su nombre original
+        else {
+            out[k] = row[k];
+        }
+    });
+    return out;
 }
 
 // ===== App =====
@@ -705,7 +767,21 @@ function scheduleMatchNotifications() {
 function renderConfig() {
     const tz = getActiveTZ();
     const tzLabel = userTimezone === 'chile' ? '🇨🇱 Chile (America/Santiago)' : `📱 Celular (${DETECTED_TZ})`;
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-green-400 font-bold mb-1">🔒 API-SPORTS KEY</p><p class="text-xs text-zinc-500">Se gestiona desde el servidor (Vercel).</p></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
+
+    // Debug info de columnas
+    let debugHTML = '';
+    if (Object.keys(allData).length) {
+        const cols = {};
+        Object.entries(allData).forEach(([sport, rows]) => {
+            if (rows.length > 0) cols[sport] = Object.keys(rows[0]).join(', ');
+        });
+        debugHTML = `<div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700 mt-2">
+            <p class="text-xs text-yellow-400 font-bold mb-2">🔍 Columnas detectadas</p>
+            ${Object.entries(cols).map(([s,c])=>`<p class="text-[10px] text-zinc-400 mb-1"><span class="text-yellow-400">${s}:</span> ${c}</p>`).join('')}
+        </div>`;
+    }
+
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-green-400 font-bold mb-1">🔒 API-SPORTS KEY</p><p class="text-xs text-zinc-500">Se gestiona desde el servidor (Vercel).</p></div>${debugHTML}</div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
