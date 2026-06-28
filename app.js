@@ -451,8 +451,11 @@ function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
     if (!filtered.length) wrap.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin resultados</p>';
     container.appendChild(wrap);
     requestAnimationFrame(observeCards);
-    // Cargar forma de equipos (solo soccer)
-    if (sport === 'soccer') addFormToCards();
+    // Cargar forma de equipos y logos (solo soccer)
+    if (sport === 'soccer') {
+        addFormToCards();
+        loadTeamLogos();
+    }
 
     } catch (err) {
         console.error('Error renderizando partidos:', err);
@@ -506,7 +509,12 @@ function buildCard(sport, row, leagueColor, matchId, index) {
             <div class="flex justify-between items-start">
                 <div class="flex items-start gap-2 flex-1 pr-2">
                     <input type="checkbox" class="match-check mt-1 w-5 h-5 accent-yellow-400 flex-shrink-0" data-match-id="${matchId}">
-                    <div><p class="font-bold text-sm leading-tight">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${hot}${cdHTML}</div>
+                    <div class="flex items-center gap-2">
+                        <img class="team-logo-home w-5 h-5 hidden" src="" onerror="this.style.display='none'">
+                        <p class="font-bold text-sm leading-tight">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>
+                        <img class="team-logo-away w-5 h-5 hidden" src="" onerror="this.style.display='none'">
+                    </div>
+                    ${hot}${cdHTML}</div>
                 </div>
                 ${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}
             </div>
@@ -1028,8 +1036,79 @@ async function loadLiveScores() {
     content.innerHTML = html;
 }
 
+// ===== Team Logo =====
+async function getTeamLogo(teamName) {
+    if (!teamName) return null;
+    const key = teamName.toLowerCase().trim();
+    if (teamLogoCache[key]) return teamLogoCache[key];
+
+    const apiKey = localStorage.getItem('sportsKey') || '';
+    if (!apiKey) return null;
+
+    try {
+        const res = await fetch(`https://v3.football.api-sports.io/teams?search=${encodeURIComponent(teamName)}`, { headers: { 'x-apisports-key': apiKey } });
+        const data = await res.json();
+        const team = data.response?.[0]?.team;
+        if (team?.logo) {
+            teamLogoCache[key] = team.logo;
+            // Guardar en localStorage cada 10 equipos nuevos
+            if (Object.keys(teamLogoCache).length % 10 === 0) {
+                localStorage.setItem('teamLogoCache', JSON.stringify(teamLogoCache));
+            }
+            return team.logo;
+        }
+    } catch {}
+    return null;
+}
+
+async function loadTeamLogos() {
+    const cards = document.querySelectorAll('.card[data-home]');
+    const teams = new Set();
+    cards.forEach(c => {
+        const home = c.dataset.home;
+        const away = c.dataset.away;
+        if (home && !teamLogoCache[home.toLowerCase().trim()]) teams.add(home);
+        if (away && !teamLogoCache[away.toLowerCase().trim()]) teams.add(away);
+    });
+
+    // Cargar logos en paralelo (max 5 a la vez)
+    const teamArr = [...teams].slice(0, 20); // Limitar a 20 equipos por carga
+    const chunks = [];
+    for (let i = 0; i < teamArr.length; i += 5) {
+        chunks.push(teamArr.slice(i, i + 5));
+    }
+
+    for (const chunk of chunks) {
+        await Promise.all(chunk.map(t => getTeamLogo(t)));
+    }
+
+    // Guardar cache
+    localStorage.setItem('teamLogoCache', JSON.stringify(teamLogoCache));
+
+    // Actualizar cards con logos
+    cards.forEach(card => {
+        const home = card.dataset.home;
+        const away = card.dataset.away;
+        const homeLogo = home ? teamLogoCache[home.toLowerCase().trim()] : null;
+        const awayLogo = away ? teamLogoCache[away.toLowerCase().trim()] : null;
+
+        const homeLogoEl = card.querySelector('.team-logo-home');
+        const awayLogoEl = card.querySelector('.team-logo-away');
+
+        if (homeLogoEl && homeLogo) {
+            homeLogoEl.src = homeLogo;
+            homeLogoEl.style.display = 'block';
+        }
+        if (awayLogoEl && awayLogo) {
+            awayLogoEl.src = awayLogo;
+            awayLogoEl.style.display = 'block';
+        }
+    });
+}
+
 // ===== Team Form (últimos 5 resultados) =====
 let teamFormCache = {};
+let teamLogoCache = JSON.parse(localStorage.getItem('teamLogoCache') || '{}');
 
 async function getTeamForm(teamName) {
     if (teamFormCache[teamName]) return teamFormCache[teamName];
