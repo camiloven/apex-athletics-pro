@@ -15,9 +15,11 @@ let userTimezone = localStorage.getItem('userTimezone') || 'auto';
 const DETECTED_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 // ===== Audio click =====
-const clickAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let clickAudioCtx = null;
 function playClick() {
     try {
+        if (!clickAudioCtx) clickAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (clickAudioCtx.state === 'suspended') clickAudioCtx.resume();
         const osc = clickAudioCtx.createOscillator();
         const gain = clickAudioCtx.createGain();
         osc.connect(gain); gain.connect(clickAudioCtx.destination);
