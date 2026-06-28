@@ -1,1011 +1,726 @@
 /* ===== Apex Athletics Pro — App Principal ===== */
 
-// ===== Configuración =====
-const SPORT_ICONS = {
-    soccer: "⚽", tennis: "🎾", basketball: "🏀",
-    hockey: "🏒", volleyball: "🏐", handball: "🤾"
-};
-const LEAGUE_COLORS = [
-    '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444',
-    '#f97316', '#06b6d4', '#84cc16', '#ec4899', '#14b8a6'
-];
+const SPORT_ICONS = { soccer: "⚽", tennis: "🎾", basketball: "🏀", hockey: "🏒", volleyball: "🏐", handball: "🤾" };
+const LEAGUE_COLORS = ['#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#f97316','#06b6d4','#84cc16','#ec4899','#14b8a6'];
 
-// ===== Estado global =====
-let allData = {};
-let currentSport = null;
-let currentView = 'pronos';
-let leagueColorMap = {};
-let resultsCache = {};
-let authToken = null;
-let betminesImgs = [];
-let forebetImgs = [];
-let wordContents = {};
-const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+// ===== Estado =====
+let allData = {}, currentSport = null, currentView = 'pronos';
+let leagueColorMap = {}, resultsCache = {}, authToken = null;
+let betminesImgs = [], forebetImgs = [], wordContents = {};
+let countdownInterval = null;
+let userTimezone = localStorage.getItem('userTimezone') || 'auto';
+const DETECTED_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// ===== Audio click =====
+const clickAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playClick() {
+    try {
+        const osc = clickAudioCtx.createOscillator();
+        const gain = clickAudioCtx.createGain();
+        osc.connect(gain); gain.connect(clickAudioCtx.destination);
+        osc.frequency.value = 800;
+        gain.gain.value = 0.05;
+        gain.gain.exponentialRampToValueAtTime(0.001, clickAudioCtx.currentTime + 0.08);
+        osc.start(); osc.stop(clickAudioCtx.currentTime + 0.08);
+    } catch {}
+}
+
+// Click sound en toda la app
+document.addEventListener('click', e => {
+    if (e.target.closest('button, .card, a, .filter-chip, .nav-tab')) playClick();
+});
+
+// ===== TZ helper =====
+function getActiveTZ() {
+    if (userTimezone === 'chile') return 'America/Santiago';
+    return DETECTED_TZ;
+}
+
+function getTZ() { return getActiveTZ(); }
 
 // ===== Utilidades =====
-
-function showToast(message, isError = false) {
+function showToast(msg, isError = false) {
     document.querySelectorAll('.toast').forEach(t => t.remove());
-    const toast = document.createElement('div');
-    toast.className = 'toast' + (isError ? ' toast-error' : '');
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3500);
+    const t = document.createElement('div');
+    t.className = 'toast' + (isError ? ' toast-error' : '');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
 }
 
 function parseDate(str) {
     if (!str) return null;
     const m = String(str).trim().match(/^(\d+)\.(\d+)\.(\d{4})(?:\s+(\d+):(\d+))?/);
     if (!m) return null;
-    return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4] || 0, +m[5] || 0));
+    return new Date(Date.UTC(+m[3], +m[2]-1, +m[1], +m[4]||0, +m[5]||0));
 }
 
 function getLocalTime(date) {
     if (!date) return '';
-    return date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: USER_TZ });
+    return date.toLocaleTimeString('es-CL', { hour:'2-digit', minute:'2-digit', hour12:false, timeZone:getTZ() });
 }
 
 function getLocalDayKey(date) {
     if (!date) return 'sin-fecha';
-    return date.toLocaleDateString('es-CL', { timeZone: USER_TZ });
+    return date.toLocaleDateString('es-CL', { timeZone:getTZ() });
 }
 
 function getLocalDayLabel(date) {
     if (!date) return 'Sin fecha';
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const opts = { timeZone: USER_TZ, weekday: 'short', day: 'numeric', month: 'short' };
-    const todayKey = today.toLocaleDateString('es-CL', { timeZone: USER_TZ });
-    const tomorrowKey = tomorrow.toLocaleDateString('es-CL', { timeZone: USER_TZ });
-    const dateKey = date.toLocaleDateString('es-CL', { timeZone: USER_TZ });
+    const today = new Date(), tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate()+1);
+    const opts = { timeZone:getTZ(), weekday:'short', day:'numeric', month:'short' };
+    const todayKey = today.toLocaleDateString('es-CL', { timeZone:getTZ() });
+    const tomorrowKey = tomorrow.toLocaleDateString('es-CL', { timeZone:getTZ() });
+    const dateKey = date.toLocaleDateString('es-CL', { timeZone:getTZ() });
     const label = date.toLocaleDateString('es-CL', opts);
-    if (dateKey === todayKey) return '📅 Hoy — ' + label;
-    if (dateKey === tomorrowKey) return '📅 Mañana — ' + label;
-    return '📅 ' + label;
+    if (dateKey === todayKey) return '📅 Hoy — '+label;
+    if (dateKey === tomorrowKey) return '📅 Mañana — '+label;
+    return '📅 '+label;
 }
 
-function pct(val) { return Math.round((parseFloat(val) || 0) * 100); }
-function normalize(str) { return String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim(); }
+function pct(val) { return Math.round((parseFloat(val)||0)*100); }
+function normalize(str) { return String(str||'').toLowerCase().replace(/[^a-z0-9]/g,'').trim(); }
 
-/** Clase de color dinámico según porcentaje */
-function pctClass(val) {
-    const v = typeof val === 'number' ? val : pct(val);
+function pctClass(v) {
     if (v >= 65) return 'pct-high';
     if (v >= 50) return 'pct-mid';
     return 'pct-low';
 }
 
-function pill(value, label, colorClass) {
-    return `<div class="stat-pill bg-zinc-800">
-        <div class="${colorClass} text-lg font-bold">${value}</div>
-        <div class="text-zinc-500 text-xs mt-0.5">${label}</div>
-    </div>`;
-}
-
-/** Pill con color dinámico según valor */
 function dynamicPill(valuePct, label) {
-    const cls = valuePct >= 65 ? 'pct-high' : valuePct >= 50 ? 'pct-mid' : 'pct-low';
-    return `<div class="stat-pill bg-zinc-800">
-        <div class="${cls} text-lg font-bold">${valuePct}%</div>
-        <div class="text-zinc-500 text-xs mt-0.5">${label}</div>
-    </div>`;
+    const cls = pctClass(valuePct);
+    return `<div class="stat-pill bg-zinc-800"><div class="${cls} text-lg font-bold">${valuePct}%</div><div class="text-zinc-500 text-xs mt-0.5">${label}</div></div>`;
 }
 
-/** Genera SVG donut chart */
-function donutChart(value, size = 80, strokeWidth = 8) {
-    const radius = (size - strokeWidth) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference - (value / 100) * circumference;
-    const color = value >= 70 ? '#4ade80' : value >= 50 ? '#fbbf24' : '#f87171';
-
-    return `<div class="donut-chart" style="width:${size}px;height:${size}px">
-        <svg width="${size}" height="${size}">
-            <circle cx="${size/2}" cy="${size/2}" r="${radius}"
-                fill="none" stroke="#27272a" stroke-width="${strokeWidth}"/>
-            <circle cx="${size/2}" cy="${size/2}" r="${radius}"
-                fill="none" stroke="${color}" stroke-width="${strokeWidth}"
-                stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
-                stroke-linecap="round" style="transition: stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1)"/>
-        </svg>
-        <span class="donut-value" style="color:${color}">${value}%</span>
-    </div>`;
+function donutChart(value, size=80, stroke=8) {
+    const r = (size-stroke)/2, c = 2*Math.PI*r, off = c-(value/100)*c;
+    const color = value>=70?'#4ade80':value>=50?'#fbbf24':'#f87171';
+    return `<div class="donut-chart" style="width:${size}px;height:${size}px"><svg width="${size}" height="${size}"><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#27272a" stroke-width="${stroke}"/><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-dasharray="${c}" stroke-dashoffset="${off}" stroke-linecap="round" style="transition:stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1)"/></svg><span class="donut-value" style="color:${color}">${value}%</span></div>`;
 }
 
-// ===== Autenticación =====
+// ===== Countdown =====
+function getCountdown(date) {
+    if (!date) return null;
+    const now = Date.now();
+    const diff = date.getTime() - now;
+    if (diff < -7200000) return null; // más de 2h después → no mostrar
+    if (diff < 0) return { text: '🔴 EN JUEGO', cls: 'live' };
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    if (h > 12) return null;
+    const cls = h < 1 ? 'urgent' : '';
+    const text = h > 0 ? `⏳ ${h}h ${m}m` : `⏳ ${m}m`;
+    return { text, cls };
+}
 
+// ===== Auth =====
 async function authenticate() {
-    try {
-        const res = await fetch('/api/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
-        });
-        if (!res.ok) throw new Error('Error de autenticación');
-        const data = await res.json();
-        authToken = data.token;
-        localStorage.setItem('authToken', authToken);
-        return true;
-    } catch (err) {
-        console.error('Auth error:', err);
-        throw err;
-    }
+    const res = await fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({}) });
+    if (!res.ok) throw new Error('Auth error');
+    const data = await res.json();
+    authToken = data.token;
+    localStorage.setItem('authToken', authToken);
+    return true;
 }
 
 function isTokenValid() {
     if (!authToken) return false;
-    try {
-        const data = JSON.parse(atob(authToken));
-        return data.auth && data.exp > Date.now();
-    } catch { return false; }
+    try { const d = JSON.parse(atob(authToken)); return d.auth && d.exp > Date.now(); } catch { return false; }
 }
 
 // ===== Navegación =====
-
 function goToNext() {
     document.getElementById('introScreen').style.display = 'none';
-
-    // Si ya hay datos guardados, ir directo a la app
     if (Object.keys(allData).length > 0) {
-        // Token en background para las llamadas a API
-        if (!isTokenValid()) {
-            authenticate().catch(() => {});
-        }
+        if (!isTokenValid()) authenticate().catch(()=>{});
         showApp(Object.keys(allData));
     } else {
-        // No hay datos, pedir archivo
-        authenticate().then(() => loadExcel()).catch(() => {
+        authenticate().then(()=>loadExcel()).catch(()=>{
             document.getElementById('uploadScreen').classList.remove('hidden');
         });
     }
 }
 
-async function checkPassword() {
-    try {
-        await authenticate();
-        showToast('✅ Acceso concedido');
-        loadExcel();
-    } catch (err) {
-        showToast('❌ Error de conexión', true);
-    }
-}
-
 function goToUpload() {
+    playClick();
     document.getElementById('appScreen').classList.add('hidden');
     document.getElementById('uploadScreen').classList.remove('hidden');
-
-    // Mostrar botón de usar datos guardados si existen
-    const btnGuardado = document.getElementById('btnUsarGuardado');
-    const uploadInfo = document.getElementById('uploadInfo');
+    const btn = document.getElementById('btnUsarGuardado');
+    const info = document.getElementById('uploadInfo');
     if (Object.keys(allData).length > 0) {
-        const deportes = Object.keys(allData).join(', ');
-        const total = Object.values(allData).reduce((a, rows) => a + rows.length, 0);
-        uploadInfo.textContent = `Datos guardados: ${deportes} (${total} partidos)`;
-        btnGuardado.classList.remove('hidden');
+        const dep = Object.keys(allData).join(', ');
+        const total = Object.values(allData).reduce((a,r)=>a+r.length,0);
+        info.textContent = `Datos guardados: ${dep} (${total} partidos)`;
+        btn.classList.remove('hidden');
     } else {
-        uploadInfo.textContent = 'Sube tu archivo Excel (.xlsx) para comenzar';
-        btnGuardado.classList.add('hidden');
+        info.textContent = 'Sube tu archivo Excel (.xlsx) para comenzar';
+        btn.classList.add('hidden');
     }
 }
 
-// ===== Carga de Excel =====
-
+// ===== Excel =====
 function loadExcel() {
     const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.xlsx';
+    input.type = 'file'; input.accept = '.xlsx';
     input.onchange = e => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 10 * 1024 * 1024) {
-            showToast('El archivo es demasiado grande (máx 10MB)', true);
-            return;
-        }
+        if (file.size > 10*1024*1024) { showToast('Archivo muy grande (máx 10MB)', true); return; }
         const reader = new FileReader();
-        reader.onload = function (ev) {
+        reader.onload = function(ev) {
             try {
-                const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+                const wb = XLSX.read(new Uint8Array(ev.target.result), { type:'array' });
                 allData = {};
                 wb.SheetNames.forEach(name => {
                     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name]);
                     if (rows.length > 0) allData[name] = rows;
                 });
-                if (Object.keys(allData).length === 0) {
-                    showToast('El archivo no tiene datos válidos', true);
-                    return;
-                }
+                if (!Object.keys(allData).length) { showToast('Sin datos válidos', true); return; }
                 localStorage.setItem('apexData', JSON.stringify(allData));
                 resultsCache = {};
                 showToast(`✅ ${Object.keys(allData).length} deporte(s) cargado(s)`);
                 showApp(Object.keys(allData));
-            } catch (err) {
-                console.error('Error parsing Excel:', err);
-                showToast('Error al leer el archivo Excel', true);
-            }
+            } catch { showToast('Error al leer Excel', true); }
         };
-        reader.onerror = () => showToast('Error al leer el archivo', true);
         reader.readAsArrayBuffer(file);
     };
     input.click();
 }
 
-// ===== App principal =====
-
+// ===== App =====
 function showApp(sports) {
     document.getElementById('uploadScreen').classList.add('hidden');
     document.getElementById('appScreen').classList.remove('hidden');
     buildLeagueColors(sports);
     buildTabs(sports);
     switchSport(sports[0]);
+    // Mostrar botón notif
+    if ('Notification' in window) document.getElementById('btnNotif').classList.remove('hidden');
 }
 
 function buildLeagueColors(sports) {
-    leagueColorMap = {};
-    let i = 0;
-    sports.forEach(sport => {
-        (allData[sport] || []).forEach(row => {
-            const lg = row.league || 'Sin liga';
-            if (!leagueColorMap[lg]) {
-                leagueColorMap[lg] = LEAGUE_COLORS[i % LEAGUE_COLORS.length];
-                i++;
-            }
-        });
-    });
+    leagueColorMap = {}; let i = 0;
+    sports.forEach(s => { (allData[s]||[]).forEach(r => { const lg = r.league||'Sin liga'; if (!leagueColorMap[lg]) { leagueColorMap[lg] = LEAGUE_COLORS[i%LEAGUE_COLORS.length]; i++; } }); });
 }
 
 function buildTabs(sports) {
     document.getElementById('sportTabs').innerHTML = sports.map(s =>
-        `<button id="tab-${s}" onclick="switchSport('${s}')"
-            class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold bg-zinc-800 text-zinc-300 transition-all">
-            ${SPORT_ICONS[s] || '🏟'} ${s.charAt(0).toUpperCase() + s.slice(1)}
-            <span class="ml-1 text-xs opacity-60">${allData[s]?.length || 0}</span>
-        </button>`
+        `<button id="tab-${s}" onclick="switchSport('${s}')" class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold bg-zinc-800 text-zinc-300 transition-all">${SPORT_ICONS[s]||'🏟'} ${s.charAt(0).toUpperCase()+s.slice(1)} <span class="ml-1 text-xs opacity-60">${allData[s]?.length||0}</span></button>`
     ).join('');
 }
 
 function switchSport(sport) {
-    if (currentSport) {
-        const p = document.getElementById('tab-' + currentSport);
-        if (p) p.classList.remove('tab-active');
-    }
+    if (currentSport) { const p = document.getElementById('tab-'+currentSport); if (p) p.classList.remove('tab-active'); }
     currentSport = sport;
-    const c = document.getElementById('tab-' + sport);
-    if (c) c.classList.add('tab-active');
-
-    if (currentView === 'pronos') renderPronos(sport, allData[sport] || []);
-    else if (currentView === 'analisis') renderAnalisis();
-    else if (currentView === 'word') renderWord();
-    else if (currentView === 'fuentes') renderFuentes();
-    else if (currentView === 'config') renderConfig();
-    window.scrollTo(0, 0);
+    const c = document.getElementById('tab-'+sport); if (c) c.classList.add('tab-active');
+    if (currentView==='pronos') renderPronos(sport, allData[sport]||[]);
+    else if (currentView==='analisis') renderAnalisis();
+    else if (currentView==='historial') renderHistorial();
+    else if (currentView==='fuentes') renderFuentes();
+    else if (currentView==='config') renderConfig();
+    else if (currentView==='word') renderWord();
+    window.scrollTo(0,0);
 }
 
 function switchView(view) {
     currentView = view;
-    const views = ['pronos', 'resultados', 'analisis', 'fuentes', 'config', 'word'];
+    const views = ['pronos','resultados','analisis','historial','fuentes','config','word'];
     views.forEach(v => {
-        const btn = document.getElementById('nav' + v.charAt(0).toUpperCase() + v.slice(1));
-        if (btn) {
-            btn.classList.toggle('active', v === view);
-            btn.classList.toggle('text-yellow-400', v === view);
-            btn.classList.toggle('text-zinc-400', v !== view);
-        }
+        const btn = document.getElementById('nav'+v.charAt(0).toUpperCase()+v.slice(1));
+        if (btn) { btn.classList.toggle('active', v===view); btn.classList.toggle('text-yellow-400', v===view); btn.classList.toggle('text-zinc-400', v!==view); }
     });
-
     const st = document.getElementById('sportTabs').parentElement;
     const mc = document.getElementById('mainContent');
     mc.classList.add('view-fade-enter');
-    setTimeout(() => mc.classList.remove('view-fade-enter'), 300);
+    setTimeout(()=>mc.classList.remove('view-fade-enter'),300);
+    if (view==='pronos') { st.style.display=''; if(currentSport) renderPronos(currentSport, allData[currentSport]||[]); else if(Object.keys(allData).length) switchSport(Object.keys(allData)[0]); }
+    else { st.style.display='none'; if(view==='resultados'&&currentSport) renderResultados(currentSport); else if(view==='analisis') renderAnalisis(); else if(view==='historial') renderHistorial(); else if(view==='fuentes') renderFuentes(); else if(view==='config') renderConfig(); else if(view==='word') renderWord(); }
+    window.scrollTo(0,0);
+}
 
-    if (view === 'pronos') {
-        st.style.display = '';
-        if (currentSport) renderPronos(currentSport, allData[currentSport] || []);
-        else if (Object.keys(allData).length > 0) switchSport(Object.keys(allData)[0]);
-    } else {
-        st.style.display = 'none';
-        if (view === 'resultados' && currentSport) renderResultados(currentSport);
-        else if (view === 'analisis') renderAnalisis();
-        else if (view === 'fuentes') renderFuentes();
-        else if (view === 'config') renderConfig();
-        else if (view === 'word') renderWord();
-    }
-    window.scrollTo(0, 0);
+// ===== Skeleton =====
+function skeletonCards(n=5) {
+    return Array.from({length:n}, ()=>'<div class="skeleton skeleton-card"></div>').join('');
+}
+
+// ===== Intersection Observer para cards =====
+const cardObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            cardObserver.unobserve(entry.target);
+        }
+    });
+}, { threshold: 0.1 });
+
+function observeCards() {
+    document.querySelectorAll('.card:not(.visible)').forEach(c => cardObserver.observe(c));
 }
 
 // ===== Vista Pronos =====
-
 function renderPronos(sport, data) {
     const container = document.getElementById('mainContent');
     container.innerHTML = '';
-    if (!data || data.length === 0) {
-        container.innerHTML = '<p class="text-zinc-500 text-center mt-16">Sin datos</p>';
-        return;
+    if (!data||!data.length) { container.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin datos</p>'; return; }
+
+    // Barra de búsqueda y filtros
+    const leagues = [...new Set(data.map(r=>r.league||'Sin liga'))];
+    const searchHTML = `
+        <div class="px-4 pt-4 space-y-3">
+            <div class="search-bar">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="Buscar equipo..." oninput="filterPronos()">
+            </div>
+            <div class="flex gap-2 overflow-x-auto pb-1" id="leagueFilters">
+                <span class="filter-chip active" onclick="filterByLeague('all', this)">Todos</span>
+                ${leagues.map(l=>`<span class="filter-chip" onclick="filterByLeague('${l.replace(/'/g,"\\'")}', this)">${l}</span>`).join('')}
+            </div>
+        </div>`;
+    container.innerHTML = searchHTML;
+
+    const contentDiv = document.createElement('div');
+    contentDiv.id = 'pronosContent';
+    container.appendChild(contentDiv);
+
+    renderPronosContent(sport, data);
+    // Countdown timer
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(()=>updateCountdowns(), 30000);
+}
+
+function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
+    const container = document.getElementById('pronosContent');
+    if (!container) return;
+    container.innerHTML = '';
+
+    // Filtrar
+    let filtered = data;
+    if (filterLeague !== 'all') filtered = filtered.filter(r => (r.league||'Sin liga') === filterLeague);
+    if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(r => (r.home||'').toLowerCase().includes(q) || (r.away||'').toLowerCase().includes(q));
     }
 
-    const todayKey = new Date().toLocaleDateString('es-CL', { timeZone: USER_TZ });
-    let matches = data.filter(r => { const d = parseDate(r.date); return d && getLocalDayKey(d) === todayKey; });
+    // Botón IA
+    const todayKey = new Date().toLocaleDateString('es-CL',{timeZone:getTZ()});
+    let matches = filtered.filter(r=>{ const d=parseDate(r.date); return d&&getLocalDayKey(d)===todayKey; });
     if (!matches.length) {
-        const days = [...new Set(data.map(r => { const d = parseDate(r.date); return d ? getLocalDayKey(d) : null; }).filter(Boolean))];
-        if (days.length) matches = data.filter(r => { const d = parseDate(r.date); return d && getLocalDayKey(d) === days[0]; });
+        const days = [...new Set(filtered.map(r=>{ const d=parseDate(r.date); return d?getLocalDayKey(d):null; }).filter(Boolean))];
+        if (days.length) matches = filtered.filter(r=>{ const d=parseDate(r.date); return d&&getLocalDayKey(d)===days[0]; });
     }
-
     const matchCount = matches.length;
-    if (matchCount > 0 && sport === 'soccer') {
-        const btnWrap = document.createElement('div');
-        btnWrap.className = 'px-4 pt-4';
-        btnWrap.innerHTML = `
-            <button id="btnAnalizarHoy" class="shimmer w-full py-4 bg-yellow-400 text-black font-extrabold rounded-2xl text-base">
-                🤖 Analizar Hoy con IA (${matchCount} partidos)
-            </button>
-            <div id="analisisHoyResult" class="mt-3"></div>`;
-        container.appendChild(btnWrap);
-        document.getElementById('btnAnalizarHoy').onclick = function () {
-            const checks = document.querySelectorAll('.match-check:checked');
-            const fullData = allData[sport] || data;
-            let seleccion = data;
-            if (checks.length > 0) {
-                const ids = Array.from(checks).map(ch => ch.getAttribute('data-match-id'));
-                seleccion = fullData.filter(r => ids.includes((r.home || '') + '|' + (r.away || '') + '|' + (r.date || '')));
-            }
-            analizarHoy(sport, seleccion, checks.length > 0);
+    if (matchCount>0 && sport==='soccer') {
+        const bw = document.createElement('div'); bw.className='px-4 pt-4';
+        bw.innerHTML=`<button id="btnAnalizarHoy" class="shimmer w-full py-4 bg-yellow-400 text-black font-extrabold rounded-2xl text-base">🤖 Analizar Hoy con IA (${matchCount} partidos)</button><div id="analisisHoyResult" class="mt-3"></div>`;
+        container.insertBefore(bw, container.firstChild.nextSibling || null);
+        document.getElementById('btnAnalizarHoy').onclick=function(){
+            const checks=document.querySelectorAll('.match-check:checked');
+            let seleccion=filtered;
+            if(checks.length){ const ids=Array.from(checks).map(ch=>ch.getAttribute('data-match-id')); seleccion=filtered.filter(r=>ids.includes((r.home||'')+'|'+(r.away||'')+'|'+(r.date||''))); }
+            analizarHoy(sport, seleccion, checks.length>0);
         };
-        container.addEventListener('change', function (e) {
-            if (!e.target.classList.contains('match-check')) return;
-            const n = document.querySelectorAll('.match-check:checked').length;
-            const btn = document.getElementById('btnAnalizarHoy');
-            if (btn) btn.innerHTML = n > 0 ? `🤖 Analizar Seleccionados (${n})` : `🤖 Analizar Hoy con IA (${matchCount} partidos)`;
-        });
     }
 
-    const parsed = data.map(row => ({ ...row, _date: parseDate(row.date) }));
-    parsed.sort((a, b) => {
-        const da = a._date?.getTime() || 0, db = b._date?.getTime() || 0;
-        return da !== db ? da - db : (a.league || '').localeCompare(b.league || '');
-    });
+    // Agrupar
+    const parsed = filtered.map(r=>({...r,_date:parseDate(r.date)}));
+    parsed.sort((a,b)=>{ const da=a._date?.getTime()||0,db=b._date?.getTime()||0; return da!==db?da-db:(a.league||'').localeCompare(b.league||''); });
+    const byDay={};
+    parsed.forEach(r=>{ const dk=getLocalDayKey(r._date); if(!byDay[dk]) byDay[dk]={label:getLocalDayLabel(r._date),leagues:{}}; const lg=r.league||'Sin liga'; if(!byDay[dk].leagues[lg]) byDay[dk].leagues[lg]=[]; byDay[dk].leagues[lg].push(r); });
 
-    const byDay = {};
-    parsed.forEach(row => {
-        const dk = getLocalDayKey(row._date);
-        if (!byDay[dk]) byDay[dk] = { label: getLocalDayLabel(row._date), leagues: {} };
-        const lg = row.league || 'Sin liga';
-        if (!byDay[dk].leagues[lg]) byDay[dk].leagues[lg] = [];
-        byDay[dk].leagues[lg].push(row);
-    });
-
-    const wrap = document.createElement('div');
-    wrap.className = 'p-4';
-    let cardIndex = 0;
-
-    Object.values(byDay).forEach(dayGroup => {
-        const dayDiv = document.createElement('div');
-        dayDiv.className = 'day-header rounded-xl px-4 py-3 mb-4 mt-2';
-        dayDiv.innerHTML = `<span class="font-bold text-yellow-400">${dayGroup.label}</span>`;
-        wrap.appendChild(dayDiv);
-
-        Object.entries(dayGroup.leagues).forEach(([leagueName, leagueMatches]) => {
-            const color = leagueColorMap[leagueName] || '#eab308';
-            const lgDiv = document.createElement('div');
-            lgDiv.className = 'flex items-center gap-2 mb-3 ml-1 px-2';
-            lgDiv.innerHTML = `
-                <span class="league-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${leagueName}</span>
-                <span class="text-zinc-600 text-xs">${leagueMatches.length} partidos</span>`;
-            wrap.appendChild(lgDiv);
-
-            leagueMatches.forEach(row => {
-                const mid = (row.home || '') + '|' + (row.away || '') + '|' + (row.date || '');
-                const card = buildCard(sport, row, color, mid, cardIndex);
-                wrap.appendChild(card);
-                cardIndex++;
-            });
+    const wrap=document.createElement('div'); wrap.className='p-4';
+    let cardIdx=0;
+    Object.values(byDay).forEach(dg=>{
+        const dd=document.createElement('div'); dd.className='day-header rounded-xl px-4 py-3 mb-4 mt-2'; dd.innerHTML=`<span class="font-bold text-yellow-400">${dg.label}</span>`; wrap.appendChild(dd);
+        Object.entries(dg.leagues).forEach(([ln,lm])=>{
+            const color=leagueColorMap[ln]||'#eab308';
+            const lg=document.createElement('div'); lg.className='flex items-center gap-2 mb-3 ml-1 px-2';
+            lg.innerHTML=`<span class="league-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${ln}</span><span class="text-zinc-600 text-xs">${lm.length} partidos</span>`;
+            wrap.appendChild(lg);
+            lm.forEach(r=>{ const mid=(r.home||'')+'|'+(r.away||'')+'|'+(r.date||''); wrap.appendChild(buildCard(sport,r,color,mid,cardIdx)); cardIdx++; });
         });
     });
 
+    if (!filtered.length) wrap.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin resultados</p>';
     container.appendChild(wrap);
+    requestAnimationFrame(observeCards);
+}
+
+function filterPronos() {
+    const q = document.getElementById('searchInput')?.value || '';
+    const activeChip = document.querySelector('#leagueFilters .filter-chip.active');
+    const league = activeChip?.textContent || 'Todos';
+    const filterLeague = league === 'Todos' ? 'all' : league;
+    renderPronosContent(currentSport, allData[currentSport]||[], filterLeague, q);
+}
+
+function filterByLeague(league, chip) {
+    document.querySelectorAll('#leagueFilters .filter-chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    const q = document.getElementById('searchInput')?.value || '';
+    renderPronosContent(currentSport, allData[currentSport]||[], league, q);
 }
 
 function buildCard(sport, row, leagueColor, matchId, index) {
-    const div = document.createElement('div');
-    div.className = 'card bg-zinc-900 rounded-2xl p-4 mb-3 border border-zinc-800';
-    div.style.animationDelay = (index * 0.05) + 's';
+    const div=document.createElement('div');
+    div.className='card bg-zinc-900 rounded-2xl p-4 mb-3 border border-zinc-800';
+    div.style.transitionDelay=(index*0.03)+'s';
+    const timeStr=getLocalTime(row._date);
+    const h=pct(row['1x2_h']),a=pct(row['1x2_a']);
+    const cd=getCountdown(row._date);
+    const cdHTML=cd?`<span class="countdown ${cd.cls}">${cd.text}</span>`:'';
 
-    const timeStr = getLocalTime(row._date);
-    const h = pct(row['1x2_h']), a = pct(row['1x2_a']);
-    let statsHTML = '';
-
-    if (sport === 'soccer') {
-        const d = pct(row['1x2_d']), o15 = pct(row['o_1.5']), o25 = pct(row['o_2.5']);
-        const u25 = pct(row['u_2.5']), u35 = pct(row['u_3.5']);
-        const best = Math.max(u25, u35);
-        const isBest = best > 55;
-        if (isBest) div.classList.add('best');
-
-        // Badge hot si confianza alta
-        const hotBadge = isBest ? `<span class="badge-hot ml-2">🔥 HOT</span>` : '';
-
-        statsHTML = `
-            <div class="grid grid-cols-3 gap-2 mt-3">
-                ${dynamicPill(h, 'Local')}
-                ${dynamicPill(d, 'Empate')}
-                ${dynamicPill(a, 'Visita')}
-            </div>
-            <div class="grid grid-cols-4 gap-2 mt-2">
-                ${dynamicPill(o15, 'O 1.5')}
-                ${dynamicPill(o25, 'O 2.5')}
-                ${dynamicPill(u25, 'U 2.5')}
-                ${dynamicPill(u35, 'U 3.5')}
-            </div>`;
-
-        div.innerHTML = `
+    if (sport==='soccer') {
+        const d=pct(row['1x2_d']),o15=pct(row['o_1.5']),o25=pct(row['o_2.5']),u25=pct(row['u_2.5']),u35=pct(row['u_3.5']);
+        const best=Math.max(u25,u35); if(best>55) div.classList.add('best');
+        const hot=best>55?'<span class="badge-hot ml-2">🔥 HOT</span>':'';
+        div.innerHTML=`
             <div class="flex justify-between items-start">
                 <div class="flex items-start gap-2 flex-1 pr-2">
                     <input type="checkbox" class="match-check mt-1 w-5 h-5 accent-yellow-400 flex-shrink-0" data-match-id="${matchId}">
-                    <div>
-                        <p class="font-bold text-sm leading-tight">${row.home || '?'} <span class="text-zinc-500">vs</span> ${row.away || '?'}</p>
-                        ${hotBadge}
-                    </div>
+                    <div><p class="font-bold text-sm leading-tight">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${hot}${cdHTML}</div>
                 </div>
-                ${timeStr ? `<span class="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>` : ''}
+                ${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}
             </div>
-            ${statsHTML}`;
-    } else if (sport === 'tennis') {
-        const o25 = pct(row['o_2.5']), u25 = pct(row['u_2.5']);
-        statsHTML = `
-            <div class="grid grid-cols-2 gap-2 mt-3">
-                ${dynamicPill(h, 'Local')}
-                ${dynamicPill(a, 'Visita')}
-            </div>
-            <div class="grid grid-cols-2 gap-2 mt-2">
-                ${dynamicPill(o25, 'O 2.5 sets')}
-                ${dynamicPill(u25, 'U 2.5 sets')}
-            </div>`;
-        div.innerHTML = `
-            <div class="flex justify-between items-start mb-2">
-                <p class="font-bold text-sm">${row.home || '?'} <span class="text-zinc-500">vs</span> ${row.away || '?'}</p>
-                ${timeStr ? `<span class="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>` : ''}
-            </div>
-            ${statsHTML}`;
+            <div class="grid grid-cols-3 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(d,'Empate')}${dynamicPill(a,'Visita')}</div>
+            <div class="grid grid-cols-4 gap-2 mt-2">${dynamicPill(o15,'O 1.5')}${dynamicPill(o25,'O 2.5')}${dynamicPill(u25,'U 2.5')}${dynamicPill(u35,'U 3.5')}</div>`;
+    } else if (sport==='tennis') {
+        div.innerHTML=`<div class="flex justify-between items-start mb-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}</div>${cdHTML}<div class="grid grid-cols-2 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(a,'Visita')}</div><div class="grid grid-cols-2 gap-2 mt-2">${dynamicPill(pct(row['o_2.5']),'O 2.5')}${dynamicPill(pct(row['u_2.5']),'U 2.5')}</div>`;
     } else {
-        statsHTML = `
-            <div class="grid grid-cols-2 gap-2 mt-3">
-                ${dynamicPill(h, 'Local')}
-                ${dynamicPill(a, 'Visita')}
-            </div>`;
-        div.innerHTML = `
-            <div class="flex justify-between items-start mb-2">
-                <p class="font-bold text-sm">${row.home || '?'} <span class="text-zinc-500">vs</span> ${row.away || '?'}</p>
-                ${timeStr ? `<span class="text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>` : ''}
-            </div>
-            ${statsHTML}`;
+        div.innerHTML=`<div class="flex justify-between items-start mb-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}</div>${cdHTML}<div class="grid grid-cols-2 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(a,'Visita')}</div>`;
     }
-
     return div;
 }
 
-// ===== API de resultados =====
+function updateCountdowns() {
+    document.querySelectorAll('.countdown[data-date]').forEach(el => {
+        const date = new Date(parseInt(el.dataset.date));
+        const cd = getCountdown(date);
+        if (cd) { el.textContent = cd.text; el.className = 'countdown ' + cd.cls; }
+    });
+}
 
+// ===== API =====
 async function fetchRealResults(sport, dates) {
-    if (!authToken) { showToast('No autenticado. Recarga la página.', true); return []; }
-    if (!dates || !dates.length) return [];
+    if (!authToken) { showToast('No autenticado', true); return []; }
+    if (!dates?.length) return [];
     try {
-        const url = `/api/sports-proxy?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(dates[0])}`;
-        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${authToken}` } });
-        if (!res.ok) {
-            if (res.status === 401) { showToast('Sesión expirada.', true); authToken = null; localStorage.removeItem('authToken'); return []; }
-            throw new Error(`Error del servidor: ${res.status}`);
-        }
-        const data = await res.json();
-        return data.response || [];
-    } catch (err) {
-        console.error('Error fetching results:', err);
-        showToast('Error al obtener resultados', true);
-        return [];
-    }
+        const res = await fetch(`/api/sports-proxy?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(dates[0])}`, { headers:{'Authorization':`Bearer ${authToken}`} });
+        if (!res.ok) { if(res.status===401){authToken=null;localStorage.removeItem('authToken');showToast('Sesión expirada',true);} return []; }
+        return (await res.json()).response||[];
+    } catch { return []; }
 }
 
 function findMatch(row, apiGames) {
-    const h = normalize(row.home), a = normalize(row.away);
-    for (const g of apiGames) {
-        const gh = normalize(g.teams?.home?.name || ''), ga = normalize(g.teams?.away?.name || '');
-        if ((gh.includes(h) || h.includes(gh)) && (ga.includes(a) || a.includes(ga))) return g;
-    }
+    const h=normalize(row.home),a=normalize(row.away);
+    for(const g of apiGames){ const gh=normalize(g.teams?.home?.name||''),ga=normalize(g.teams?.away?.name||''); if((gh.includes(h)||h.includes(gh))&&(ga.includes(a)||a.includes(ga))) return g; }
     return null;
 }
 
-// ===== Vista Resultados =====
-
+// ===== Resultados =====
 async function renderResultados(sport) {
-    const container = document.getElementById('mainContent');
-    const data = allData[sport] || [];
-    if (!data.length) { container.innerHTML = '<p class="text-zinc-500 text-center mt-16">Sin datos</p>'; return; }
-
-    container.innerHTML = `<div class="loading-overlay">
-        <div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div>
-        <p class="text-zinc-400">Buscando resultados...</p>
-    </div>`;
-
-    const cacheKey = sport + '_' + (data[0]?.date || '');
-    if (resultsCache[cacheKey]) { renderResultadosUI(sport, data, resultsCache[cacheKey]); return; }
-
-    const dates = [...new Set(data.slice(0, 20).map(r => {
-        const m = String(r.date || '').match(/(\d+)\.(\d+)\.(\d{4})/);
-        return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : '';
-    }).filter(Boolean))];
-
-    const apiGames = await fetchRealResults(sport, dates);
-    const resultados = data.slice(0, 20).map(row => {
-        const g = findMatch(row, apiGames);
-        if (!g) return { marcador: '?', estado: 'pendiente' };
-        const sc = sport === 'soccer' ? g.goals : g.scores;
-        const score = sport === 'soccer'
-            ? (sc?.home !== null && sc?.away !== null ? sc.home + '-' + sc.away : null)
-            : (sc?.home?.total !== undefined ? sc.home.total + '-' + sc.away.total : null);
-        const finished = g.fixture?.status?.short === 'FT' || g.status?.short === 'FT';
-        return { marcador: score || '?', estado: finished && score ? 'finalizado' : 'pendiente' };
+    const container=document.getElementById('mainContent'), data=allData[sport]||[];
+    if(!data.length){container.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin datos</p>';return;}
+    container.innerHTML=`<div class="loading-overlay"><div class="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400">Buscando resultados...</p></div>`;
+    const cacheKey=sport+'_'+(data[0]?.date||'');
+    if(resultsCache[cacheKey]){renderResultadosUI(sport,data,resultsCache[cacheKey]);return;}
+    const dates=[...new Set(data.slice(0,20).map(r=>{const m=String(r.date||'').match(/(\d+)\.(\d+)\.(\d{4})/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):'';}).filter(Boolean))];
+    const apiGames=await fetchRealResults(sport,dates);
+    const resultados=data.slice(0,20).map(row=>{
+        const g=findMatch(row,apiGames);
+        if(!g)return{marcador:'?',estado:'pendiente'};
+        const sc=sport==='soccer'?g.goals:g.scores;
+        const score=sport==='soccer'?(sc?.home!==null&&sc?.away!==null?sc.home+'-'+sc.away:null):(sc?.home?.total!==undefined?sc.home.total+'-'+sc.away.total:null);
+        const finished=g.fixture?.status?.short==='FT'||g.status?.short==='FT';
+        return{marcador:score||'?',estado:finished&&score?'finalizado':'pendiente'};
     });
-
-    resultsCache[cacheKey] = resultados;
-    renderResultadosUI(sport, data, resultados);
+    resultsCache[cacheKey]=resultados;
+    renderResultadosUI(sport,data,resultados);
 }
 
-function renderResultadosUI(sport, data, resultados) {
+function renderResultadosUI(sport,data,resultados) {
+    const container=document.getElementById('mainContent'); container.innerHTML='';
+    let aciertos=0,errores=0,pendientes=0;
+    const wrap=document.createElement('div'); wrap.className='p-4';
+    const cards=data.slice(0,20).map((row,i)=>{
+        const res=resultados[i]||{marcador:'?',estado:'pendiente'};
+        const fin=res.estado==='finalizado'&&res.marcador!=='?';
+        let acierto=null,pron='';
+        if(fin){const p=res.marcador.split('-').map(Number);const g1=p[0]||0,g2=p[1]||0;const gan=g1>g2?'local':g2>g1?'visita':'empate';const pH=parseFloat(row['1x2_h']||0),pD=parseFloat(row['1x2_d']||0),pA=parseFloat(row['1x2_a']||0);const mx=Math.max(pH,pD||0,pA);let pg=mx===pH?'local':mx===pD?'empate':'visita';if(sport!=='soccer'&&!row['1x2_d'])pg=pH>pA?'local':'visita';acierto=pg===gan;pron='Pronó: '+(pg==='local'?row.home:pg==='visita'?row.away:'Empate');}
+        if(acierto===true)aciertos++;else if(acierto===false)errores++;else pendientes++;
+        const color=leagueColorMap[row.league||'']||'#eab308';
+        const timeStr=getLocalTime(parseDate(row.date));
+        const chk=acierto===true?`<span class="check-animate" style="animation-delay:${i*0.05}s">✅</span>`:acierto===false?`<span class="check-animate" style="animation-delay:${i*0.05}s">❌</span>`:'⏳';
+        return`<div class="card bg-zinc-900 rounded-2xl p-4 mb-3 border ${acierto===true?'border-green-500':acierto===false?'border-red-500':'border-zinc-800'}" style="transition-delay:${i*0.05}s"><div class="flex justify-between items-start mb-2"><div class="flex-1 pr-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p><p class="text-xs mt-0.5" style="color:${color}">${row.league||''}</p></div><div class="text-right flex-shrink-0">${timeStr?`<p class="text-xs text-zinc-500">${timeStr}</p>`:''}<p class="text-2xl font-bold mt-1 ${fin?'text-white':'text-zinc-600'}">${res.marcador}</p></div></div><div class="flex justify-between items-center mt-2 pt-2 border-t border-zinc-800"><span class="text-xs text-zinc-500">${pron}</span>${chk}</div></div>`;
+    }).join('');
+    const total=aciertos+errores,pct_ac=total>0?Math.round(aciertos/total*100):0;
+    wrap.innerHTML=`<div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-yellow-400 font-bold text-center mb-3">📊 Resumen</p><div class="flex items-center justify-center gap-6 mb-4">${donutChart(pct_ac,90,10)}<div class="space-y-2"><div class="flex items-center gap-2"><span class="text-green-400 text-xl font-bold">${aciertos}</span><span class="text-xs text-zinc-400">✅ Aciertos</span></div><div class="flex items-center gap-2"><span class="text-red-400 text-xl font-bold">${errores}</span><span class="text-xs text-zinc-400">❌ Errores</span></div><div class="flex items-center gap-2"><span class="text-zinc-300 text-xl font-bold">${pendientes}</span><span class="text-xs text-zinc-400">⏳ Pendientes</span></div></div></div>${total>0?`<div class="progress-bar-animated bg-zinc-800 rounded-full h-3 overflow-hidden"><div class="progress-fill bg-gradient-to-r from-green-500 to-emerald-400" style="width:0%" id="progressFill"></div></div><p class="text-center text-sm mt-2 font-bold text-green-400">${pct_ac}% de acierto</p>`:''}</div><button onclick="resultsCache={};renderResultados('${sport}')" class="shimmer w-full py-3 bg-zinc-800 text-yellow-400 rounded-2xl text-sm font-bold mb-4 hover:bg-zinc-700 transition">🔄 Actualizar</button>${cards}`;
+    container.appendChild(wrap);
+    // Guardar historial
+    saveHistory(pct_ac, aciertos, errores, pendientes);
+    requestAnimationFrame(()=>{const f=document.getElementById('progressFill');if(f)setTimeout(()=>f.style.width=pct_ac+'%',100);});
+    requestAnimationFrame(observeCards);
+}
+
+// ===== Historial =====
+function saveHistory(pct, wins, losses, pending) {
+    const today = new Date().toLocaleDateString('es-CL',{timeZone:getTZ()});
+    let history = JSON.parse(localStorage.getItem('pronosHistory')||'[]');
+    const existing = history.findIndex(h=>h.date===today);
+    const entry = { date:today, pct, wins, losses, pending, timestamp:Date.now() };
+    if (existing >= 0) history[existing] = entry;
+    else history.push(entry);
+    // Mantener últimos 30 días
+    if (history.length > 30) history = history.slice(-30);
+    localStorage.setItem('pronosHistory', JSON.stringify(history));
+}
+
+function renderHistorial() {
     const container = document.getElementById('mainContent');
-    container.innerHTML = '';
-    let aciertos = 0, errores = 0, pendientes = 0;
+    const history = JSON.parse(localStorage.getItem('pronosHistory')||'[]');
 
-    const wrap = document.createElement('div');
-    wrap.className = 'p-4';
+    if (!history.length) {
+        container.innerHTML = `<div class="p-4 view-fade-enter"><div class="flex flex-col items-center justify-center mt-24"><span class="text-5xl mb-4">📈</span><p class="text-zinc-400 text-center">Sin historial todavía</p><p class="text-zinc-600 text-xs text-center mt-2">Los resultados se guardan automáticamente</p></div></div>`;
+        return;
+    }
 
-    const cards = data.slice(0, 20).map((row, i) => {
-        const res = resultados[i] || { marcador: '?', estado: 'pendiente' };
-        const finalizado = res.estado === 'finalizado' && res.marcador !== '?';
-        let acierto = null, pronostico = '';
+    const totalWins = history.reduce((a,h)=>a+h.wins, 0);
+    const totalLosses = history.reduce((a,h)=>a+h.losses, 0);
+    const total = totalWins + totalLosses;
+    const avgPct = total > 0 ? Math.round(totalWins/total*100) : 0;
+    const last7 = history.slice(-7);
+    const avg7 = last7.length ? Math.round(last7.reduce((a,h)=>a+h.pct,0)/last7.length) : 0;
+    const bestDay = history.reduce((best,h) => h.pct > best.pct ? h : best, history[0]);
 
-        if (finalizado) {
-            const parts = res.marcador.split('-').map(Number);
-            const g1 = parts[0] || 0, g2 = parts[1] || 0;
-            const ganador = g1 > g2 ? 'local' : g2 > g1 ? 'visita' : 'empate';
-            const probH = parseFloat(row['1x2_h'] || 0), probD = parseFloat(row['1x2_d'] || 0), probA = parseFloat(row['1x2_a'] || 0);
-            const maxProb = Math.max(probH, probD || 0, probA);
-            let pg = maxProb === probH ? 'local' : maxProb === probD ? 'empate' : 'visita';
-            if (sport !== 'soccer' && !row['1x2_d']) pg = probH > probA ? 'local' : 'visita';
-            acierto = pg === ganador;
-            pronostico = 'Pronó: ' + (pg === 'local' ? row.home : pg === 'visita' ? row.away : 'Empate');
-        }
-
-        if (acierto === true) aciertos++;
-        else if (acierto === false) errores++;
-        else pendientes++;
-
-        const color = leagueColorMap[row.league || ''] || '#eab308';
-        const timeStr = getLocalTime(parseDate(row.date));
-        const checkIcon = acierto === true ? '<span class="check-animate" style="animation-delay:' + (i * 0.05) + 's">✅</span>'
-            : acierto === false ? '<span class="check-animate" style="animation-delay:' + (i * 0.05) + 's">❌</span>'
-            : '⏳';
-
-        return `<div class="card bg-zinc-900 rounded-2xl p-4 mb-3 border ${acierto === true ? 'border-green-500' : acierto === false ? 'border-red-500' : 'border-zinc-800'}" style="animation-delay:${i * 0.05}s">
-            <div class="flex justify-between items-start mb-2">
-                <div class="flex-1 pr-2">
-                    <p class="font-bold text-sm">${row.home || '?'} <span class="text-zinc-500">vs</span> ${row.away || '?'}</p>
-                    <p class="text-xs mt-0.5" style="color:${color}">${row.league || ''}</p>
-                </div>
-                <div class="text-right flex-shrink-0">
-                    ${timeStr ? `<p class="text-xs text-zinc-500">${timeStr}</p>` : ''}
-                    <p class="text-2xl font-bold mt-1 ${finalizado ? 'text-white' : 'text-zinc-600'}">${res.marcador}</p>
-                </div>
-            </div>
-            <div class="flex justify-between items-center mt-2 pt-2 border-t border-zinc-800">
-                <span class="text-xs text-zinc-500">${pronostico}</span>
-                ${checkIcon}
-            </div>
-        </div>`;
+    // Gráfico de barras
+    const maxPct = Math.max(...history.map(h=>h.pct), 1);
+    const barsHTML = history.slice(-15).map(h => {
+        const height = Math.max((h.pct / maxPct) * 50, 2);
+        const color = h.pct >= 70 ? '#4ade80' : h.pct >= 50 ? '#fbbf24' : '#f87171';
+        const dayLabel = h.date.split('/').slice(0,2).join('/');
+        return `<div class="history-bar" style="height:${height}px;background:${color}" data-label="${dayLabel}"></div>`;
     }).join('');
 
-    const total = aciertos + errores;
-    const pct_ac = total > 0 ? Math.round(aciertos / total * 100) : 0;
+    container.innerHTML = `
+        <div class="p-4 view-fade-enter">
+            <h2 class="text-xl font-extrabold text-yellow-400 mb-4">📈 Historial de Rendimiento</h2>
 
-    wrap.innerHTML = `
-        <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30">
-            <p class="text-yellow-400 font-bold text-center mb-3">📊 Resumen</p>
-            <div class="flex items-center justify-center gap-6 mb-4">
-                ${donutChart(pct_ac, 90, 10)}
-                <div class="space-y-2">
-                    <div class="flex items-center gap-2">
-                        <span class="text-green-400 text-xl font-bold">${aciertos}</span>
-                        <span class="text-xs text-zinc-400">✅ Aciertos</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-red-400 text-xl font-bold">${errores}</span>
-                        <span class="text-xs text-zinc-400">❌ Errores</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-zinc-300 text-xl font-bold">${pendientes}</span>
-                        <span class="text-xs text-zinc-400">⏳ Pendientes</span>
+            <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30">
+                <div class="flex items-center justify-center gap-6 mb-4">
+                    ${donutChart(avgPct, 90, 10)}
+                    <div class="space-y-2">
+                        <div><span class="text-2xl font-bold text-white">${total}</span><span class="text-xs text-zinc-400 ml-2">partidos analizados</span></div>
+                        <div><span class="text-green-400 font-bold">${totalWins}</span><span class="text-xs text-zinc-500 ml-1">aciertos</span></div>
+                        <div><span class="text-red-400 font-bold">${totalLosses}</span><span class="text-xs text-zinc-500 ml-1">errores</span></div>
                     </div>
                 </div>
             </div>
-            ${total > 0 ? `
-                <div class="progress-bar-animated bg-zinc-800 rounded-full h-3 overflow-hidden">
-                    <div class="progress-fill bg-gradient-to-r from-green-500 to-emerald-400" style="width:0%" id="progressFill"></div>
+
+            <div class="grid grid-cols-3 gap-3 mb-4">
+                <div class="bg-zinc-900 rounded-2xl p-3 text-center border border-zinc-800">
+                    <p class="text-xs text-zinc-500 mb-1">Últimos 7 días</p>
+                    <p class="text-xl font-bold ${pctClass(avg7)}">${avg7}%</p>
                 </div>
-                <p class="text-center text-sm mt-2 font-bold text-green-400">${pct_ac}% de acierto</p>` : ''}
-        </div>
-        <button onclick="resultsCache={};renderResultados('${sport}')"
-            class="shimmer w-full py-3 bg-zinc-800 text-yellow-400 rounded-2xl text-sm font-bold mb-4 hover:bg-zinc-700 transition">
-            🔄 Actualizar
-        </button>
-        ${cards}`;
+                <div class="bg-zinc-900 rounded-2xl p-3 text-center border border-zinc-800">
+                    <p class="text-xs text-zinc-500 mb-1">Mejor día</p>
+                    <p class="text-xl font-bold text-green-400">${bestDay.pct}%</p>
+                    <p class="text-[9px] text-zinc-600">${bestDay.date}</p>
+                </div>
+                <div class="bg-zinc-900 rounded-2xl p-3 text-center border border-zinc-800">
+                    <p class="text-xs text-zinc-500 mb-1">Días registrados</p>
+                    <p class="text-xl font-bold text-yellow-400">${history.length}</p>
+                </div>
+            </div>
 
-    container.appendChild(wrap);
+            <div class="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
+                <p class="text-xs text-zinc-500 mb-3 font-bold">Últimos ${Math.min(history.length,15)} días</p>
+                <div class="history-chart">${barsHTML}</div>
+                <div class="mt-5"></div>
+            </div>
 
-    // Animar barra de progreso
-    requestAnimationFrame(() => {
-        const fill = document.getElementById('progressFill');
-        if (fill) setTimeout(() => fill.style.width = pct_ac + '%', 100);
-    });
+            <div class="mt-4 space-y-2">
+                ${history.slice(-7).reverse().map(h=>`
+                    <div class="flex items-center justify-between bg-zinc-900 rounded-xl px-4 py-3 border border-zinc-800">
+                        <div><p class="text-sm font-bold">${h.date}</p><p class="text-xs text-zinc-500">${h.wins}W ${h.losses}L ${h.pending}P</p></div>
+                        <span class="text-lg font-bold ${pctClass(h.pct)}">${h.pct}%</span>
+                    </div>
+                `).join('')}
+            </div>
+
+            <button onclick="if(confirm('¿Borrar historial?')){localStorage.removeItem('pronosHistory');renderHistorial();}"
+                class="w-full py-3 bg-zinc-800 text-red-400 rounded-2xl text-sm font-bold mt-4 hover:bg-zinc-700 transition">
+                🗑️ Borrar historial
+            </button>
+        </div>`;
 }
 
-// ===== IA: Groq y Gemini =====
-
+// ===== IA =====
 async function geminiCall(imageBase64, prompt) {
-    const key = localStorage.getItem('geminiKey') || '';
-    if (!key) throw new Error('Sin clave Gemini. Configúrala en ⚙️ Config');
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: 'image/jpeg', data: imageBase64 } }, { text: prompt }] }] })
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Error Gemini: ${res.status}`);
-    }
-    const j = await res.json();
-    return j.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const key=localStorage.getItem('geminiKey')||'';
+    if(!key) throw new Error('Sin clave Gemini');
+    const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:imageBase64}},{text:prompt}]}]})});
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||`Error Gemini: ${res.status}`);}
+    return (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text||'';
 }
 
 async function groqCall(content, maxTokens) {
-    const key = localStorage.getItem('groqKey') || '';
-    if (!key) throw new Error('Sin clave Groq. Configúrala en ⚙️ Config');
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': '***' + key },
-        body: JSON.stringify({
-            model: typeof content === 'string' ? 'llama-3.3-70b-versatile' : 'llama-3.2-11b-vision-preview',
-            max_tokens: maxTokens,
-            messages: [{ role: 'user', content }]
-        })
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Error Groq: ${res.status}`);
-    }
-    const j = await res.json();
-    return j.choices?.[0]?.message?.content || '';
+    const key=localStorage.getItem('groqKey')||'';
+    if(!key) throw new Error('Sin clave Groq');
+    const res=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'***'+key},body:JSON.stringify({model:typeof content==='string'?'llama-3.3-70b-versatile':'llama-3.2-11b-vision-preview',max_tokens:maxTokens,messages:[{role:'user',content}]})});
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||`Error Groq: ${res.status}`);}
+    return (await res.json()).choices?.[0]?.message?.content||'';
 }
-
-// ===== Vista Análisis =====
 
 function renderAnalisis() {
-    document.getElementById('mainContent').innerHTML = `
-        <div class="p-4 view-fade-enter">
-            <h2 class="text-xl font-extrabold text-yellow-400 mb-4">🎯 Análisis Combinado</h2>
-            <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30">
-                <p class="text-sm text-zinc-400 mb-3">Sube capturas de pronósticos del día</p>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <p class="text-xs text-zinc-500 mb-2 font-bold">📸 BETMINES</p>
-                        <label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700 transition">
-                            ${betminesImgs.length > 0 ? betminesImgs.length + ' foto(s) ✅' : 'Seleccionar'}
-                            <input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'betmines')">
-                        </label>
-                    </div>
-                    <div>
-                        <p class="text-xs text-zinc-500 mb-2 font-bold">📸 FOREBET</p>
-                        <label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700 transition">
-                            ${forebetImgs.length > 0 ? forebetImgs.length + ' foto(s) ✅' : 'Seleccionar'}
-                            <input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'forebet')">
-                        </label>
-                    </div>
-                </div>
-            </div>
-            <button onclick="runAnalisis()" class="shimmer w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl mb-4 hover:bg-yellow-300 transition">
-                🤖 Generar Análisis
-            </button>
-            <div id="analisisResult"></div>
-        </div>`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">🎯 Análisis Combinado</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><p class="text-sm text-zinc-400 mb-3">Sube capturas de pronósticos</p><div class="grid grid-cols-2 gap-3"><div><p class="text-xs text-zinc-500 mb-2 font-bold">📸 BETMINES</p><label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700 transition">${betminesImgs.length?betminesImgs.length+' foto(s) ✅':'Seleccionar'}<input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'betmines')"></label></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">📸 FOREBET</p><label class="block w-full py-4 bg-zinc-800 rounded-2xl text-center text-sm cursor-pointer hover:bg-zinc-700 transition">${forebetImgs.length?forebetImgs.length+' foto(s) ✅':'Seleccionar'}<input type="file" accept="image/*" multiple class="hidden" onchange="loadImgs(event,'forebet')"></label></div></div></div><button onclick="runAnalisis()" class="shimmer w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl mb-4 hover:bg-yellow-300 transition">🤖 Generar Análisis</button><div id="analisisResult"></div></div>`;
 }
 
-function loadImgs(event, source) {
-    const files = Array.from(event.target.files);
-    const arr = source === 'betmines' ? betminesImgs : forebetImgs;
-    arr.length = 0;
-    let loaded = 0;
-    files.forEach(file => {
-        if (file.size > 5 * 1024 * 1024) { showToast(`${file.name} es muy grande (máx 5MB)`, true); return; }
-        const reader = new FileReader();
-        reader.onload = e => { arr.push(e.target.result.split(',')[1]); loaded++; if (loaded === files.length) renderAnalisis(); };
-        reader.readAsDataURL(file);
-    });
+function loadImgs(event,source){
+    const files=Array.from(event.target.files),arr=source==='betmines'?betminesImgs:forebetImgs;arr.length=0;let loaded=0;
+    files.forEach(f=>{if(f.size>5*1024*1024){showToast(f.name+' muy grande',true);return;}const r=new FileReader();r.onload=e=>{arr.push(e.target.result.split(',')[1]);loaded++;if(loaded===files.length)renderAnalisis();};r.readAsDataURL(f);});
 }
 
-async function runAnalisis() {
-    const result = document.getElementById('analisisResult');
-    if (!betminesImgs.length && !forebetImgs.length) { showToast('Sube al menos una captura', true); return; }
-    if (!localStorage.getItem('groqKey')) { showToast('Configura tu clave Groq en ⚙️ Config', true); return; }
-
-    try {
-        result.innerHTML = `<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 1: Leyendo Betmines...</p></div>`;
-        let betTxt = 'Sin datos';
-        if (betminesImgs.length) {
-            const results = [];
-            for (const img of betminesImgs.slice(0, 2)) {
-                results.push(await geminiCall(img.replace(/^data:image\/[a-z]+;base64,/, ''), 'Lee esta imagen de BETMINES con cuidado. Lista SOLO los partidos que puedes leer claramente. Para cada partido escribe exactamente: EquipoLocal vs EquipoVisita: PREDICCION. Una linea por partido. PREDICCION debe ser LOCAL, EMPATE o VISITA.'));
-            }
-            betTxt = results.join('\n');
-        }
-
-        result.innerHTML = `<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 2: Leyendo Forebet...</p></div>`;
-        let foreTxt = 'Sin datos';
-        if (forebetImgs.length) {
-            const results = [];
-            for (const img of forebetImgs.slice(0, 2)) {
-                results.push(await geminiCall(img.replace(/^data:image\/[a-z]+;base64,/, ''), 'Lee esta imagen de FOREBET con cuidado. Lista SOLO los partidos que puedes leer claramente. Para cada partido escribe exactamente: EquipoLocal vs EquipoVisita: PREDICCION PORCENTAJE%.'));
-            }
-            foreTxt = results.join('\n');
-        }
-
-        result.innerHTML = `<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 3: Generando veredictos...</p></div>`;
-
-        const prompt = 'BETMINES:\n' + betTxt + '\n\nFOREBET:\n' + foreTxt + '\n\nEres un analista de apuestas. Cruza los datos y genera un veredicto para CADA partido. Formato:\nPartido: NombreLocal vs NombreVisita | Betmines: PREDICCION | Forebet: PREDICCION % | Veredicto: LOCAL o EMPATE o VISITA | Confianza: NUMERO_ENTRE_50_Y_95 | Razon: texto corto\nReglas: Si ambos coinciden, confianza alta (75-95). Si difieren, media (50-65).';
-        const resp = await groqCall(prompt, 1000);
-        const lineas = resp.split('\n').filter(l => l.trim().length > 5);
-        const partidos = lineas.map(l => {
-            const get = (key) => { const i = l.indexOf(key); if (i < 0) return '—'; const v = l.slice(i + key.length); const j = v.indexOf(' | '); return (j >= 0 ? v.slice(0, j) : v).trim(); };
-            return { partido: get('Partido:'), betmines: get('Betmines:'), forebet: get('Forebet:'), veredicto: get('Veredicto:').toUpperCase(), confianza: parseInt(get('Confianza:')) || 70, razon: get('Razon:') };
-        });
+async function runAnalisis(){
+    const result=document.getElementById('analisisResult');
+    if(!betminesImgs.length&&!forebetImgs.length){showToast('Sube al menos una captura',true);return;}
+    if(!localStorage.getItem('groqKey')){showToast('Configura Groq en Config',true);return;}
+    try{
+        result.innerHTML=`<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 1: Leyendo Betmines...</p></div>`;
+        let betTxt='Sin datos';
+        if(betminesImgs.length){const r=[];for(const img of betminesImgs.slice(0,2))r.push(await geminiCall(img.replace(/^data:image\/[a-z]+;base64,/,''),'Lee esta imagen de BETMINES. Lista SOLO los partidos visibles: EquipoLocal vs EquipoVisita: PREDICCION (LOCAL/EMPATE/VISITA).'));betTxt=r.join('\n');}
+        result.innerHTML=`<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 2: Leyendo Forebet...</p></div>`;
+        let foreTxt='Sin datos';
+        if(forebetImgs.length){const r=[];for(const img of forebetImgs.slice(0,2))r.push(await geminiCall(img.replace(/^data:image\/[a-z]+;base64,/,''),'Lee esta imagen de FOREBET. Lista SOLO los partidos: EquipoLocal vs EquipoVisita: PREDICCION PORCENTAJE%.'));foreTxt=r.join('\n');}
+        result.innerHTML=`<div class="loading-overlay"><div class="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Paso 3: Generando veredictos...</p></div>`;
+        const resp=await groqCall('BETMINES:\n'+betTxt+'\n\nFOREBET:\n'+foreTxt+'\n\nCruza datos y genera veredicto por partido:\nPartido: Local vs Visita | Betmines: PRED | Forebet: PRED% | Veredicto: LOCAL/EMPATE/VISITA | Confianza: 50-95 | Razon: corto',1000);
+        const partidos=resp.split('\n').filter(l=>l.trim().length>5).map(l=>{const g=k=>{const i=l.indexOf(k);if(i<0)return'—';const v=l.slice(i+k.length);const j=v.indexOf(' | ');return(j>=0?v.slice(0,j):v).trim();};return{partido:g('Partido:'),betmines:g('Betmines:'),forebet:g('Forebet:'),veredicto:g('Veredicto:').toUpperCase(),confianza:parseInt(g('Confianza:'))||70,razon:g('Razon:')};});
         renderAnalisisResult(partidos);
-    } catch (err) {
-        result.innerHTML = `<div class="text-center mt-8"><div class="text-4xl mb-3">⚠️</div><p class="text-red-400 text-sm mb-4">${err.message}</p><button onclick="runAnalisis()" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;
+    }catch(e){result.innerHTML=`<div class="text-center mt-8"><p class="text-red-400 text-sm mb-4">${e.message}</p><button onclick="runAnalisis()" class="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold">Reintentar</button></div>`;}
+}
+
+function renderAnalisisResult(partidos){
+    const result=document.getElementById('analisisResult');
+    if(!partidos.length){result.innerHTML='<p class="text-zinc-500 text-center mt-8">Sin partidos</p>';return;}
+    const colores={LOCAL:'border-green-500',EMPATE:'border-yellow-500',VISITA:'border-blue-500'},iconos={LOCAL:'🏠',EMPATE:'🤝',VISITA:'✈️'};
+    const total=partidos.length,altas=partidos.filter(p=>p.confianza>=70).length,avg=Math.round(partidos.reduce((a,p)=>a+p.confianza,0)/total);
+    result.innerHTML=`<div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30"><div class="flex justify-between items-center mb-3"><p class="text-yellow-400 font-bold text-sm uppercase">📊 Resumen</p><span class="text-zinc-500 text-xs">${total} partidos</span></div><div class="flex items-center justify-center gap-6 mb-3">${donutChart(avg,80,8)}<div class="grid grid-cols-2 gap-3 text-center"><div class="bg-zinc-800 rounded-xl p-2"><p class="text-xl font-bold text-green-400">${altas}</p><p class="text-zinc-500 text-xs">Alta conf.</p></div><div class="bg-zinc-800 rounded-xl p-2"><p class="text-xl font-bold text-yellow-400">${total-altas}</p><p class="text-zinc-500 text-xs">Media/baja</p></div></div></div></div>`+
+    partidos.map((p,i)=>{const c=p.confianza||0,ct=c>=70?'text-green-400':c>=50?'text-yellow-400':'text-zinc-400',b=colores[p.veredicto]||'border-zinc-700';return`<div class="card bg-zinc-900 rounded-2xl p-4 mb-3 border ${b}" style="transition-delay:${i*0.05}s"><p class="font-bold text-sm mb-3">${p.partido}</p><div class="space-y-1 mb-3"><div class="flex justify-between text-xs"><span class="text-zinc-500">🔨 Betmines</span><span class="text-zinc-300">${p.betmines||'−'}</span></div><div class="flex justify-between text-xs"><span class="text-zinc-500">📈 Forebet</span><span class="text-zinc-300">${p.forebet||'−'}</span></div></div><div class="bg-zinc-800 rounded-xl p-3 flex justify-between items-center"><div><p class="text-xs text-zinc-500 mb-1">🎯 Veredicto</p><p class="font-bold text-lg">${iconos[p.veredicto]||''} ${p.veredicto||'−'}</p><p class="text-zinc-500 text-xs mt-1">${p.razon||''}</p></div><div class="text-right"><p class="${ct} text-3xl font-bold">${c}%</p><p class="text-zinc-600 text-xs">confianza</p></div></div></div>`;}).join('');
+    requestAnimationFrame(observeCards);
+}
+
+// ===== Analizar hoy =====
+async function analizarHoy(sport,data,sel){
+    if(!localStorage.getItem('groqKey')){showToast('Configura Groq',true);return;}
+    let hoy,totalDia;
+    if(sel){hoy=data;totalDia=data.length;}else{
+        const tk=new Date().toLocaleDateString('es-CL',{timeZone:getTZ()});
+        hoy=data.filter(r=>{const d=parseDate(r.date);return d&&getLocalDayKey(d)===tk;});
+        if(!hoy.length){const dias=[...new Set(data.map(r=>{const d=parseDate(r.date);return d?getLocalDayKey(d):null;}).filter(Boolean))];if(dias.length)hoy=data.filter(r=>{const d=parseDate(r.date);return d&&getLocalDayKey(d)===dias[0];});}
+        totalDia=hoy.length;hoy=hoy.slice(0,40);
+    }
+    if(sport!=='soccer'){showToast('Solo disponible para Fútbol',true);return;}
+    if(!hoy.length){showToast('No hay partidos hoy',true);return;}
+    const rd=document.getElementById('analisisHoyResult'),bt=document.getElementById('btnAnalizarHoy');
+    bt.disabled=true;bt.textContent='⏳ Analizando...';
+    rd.innerHTML=`<div class="flex items-center gap-3 p-4 bg-zinc-900 rounded-2xl border border-yellow-500/30"><div class="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full spinner"></div><p class="text-zinc-400 text-sm">Analizando ${hoy.length} partidos...</p></div>`;
+    const lista=hoy.map((r,i)=>{const h=Math.round((parseFloat(r['1x2_h']||0))*100),d=Math.round((parseFloat(r['1x2_d']||0))*100),a=Math.round((parseFloat(r['1x2_a']||0))*100),o15=Math.round((parseFloat(r['o_1.5']||0))*100),o25=Math.round((parseFloat(r['o_2.5']||0))*100),u25=Math.round((parseFloat(r['u_2.5']||0))*100),u35=Math.round((parseFloat(r['u_3.5']||0))*100);return(i+1)+'. '+(r.home||'?')+' vs '+(r.away||'?')+' ['+(r.league||'')+']\n   1X2 -> Local:'+h+'% Empate:'+d+'% Visita:'+a+'%\n   Goles -> Over1.5:'+o15+'% Over2.5:'+o25+'% Under2.5:'+u25+'% Under3.5:'+u35+'%';}).join('\n\n');
+    try{
+        const texto=await groqCall('Eres analista experto. Analiza:\n\n'+lista+'\n\nPara CADA partido:\n---\nPartido: Local vs Visita\nVeredicto: resultado 1x2\nGoles: Over/Under\nConfianza: Alta/Media/Baja\nRazonamiento: 4-6 lineas\n---',4000);
+        const partes=texto.split('---').filter(p=>p.trim()&&p.includes('Partido:'));
+        const html=partes.map(p=>{const l=p.trim().split('\n').filter(x=>x.trim());const c=p.includes('Alta')?'border-green-500 bg-green-500/5':p.includes('Media')?'border-yellow-500 bg-yellow-500/5':'border-zinc-700 bg-zinc-900';return`<div class="card rounded-2xl p-4 mb-3 border ${c}">${l.map(x=>`<p class="text-sm mb-1">${x}</p>`).join('')}</div>`;}).join('');
+        rd.innerHTML=`<p class="text-yellow-400 font-bold text-sm mb-3">🤖 ${partes.length} analizados${totalDia>40?' (de '+totalDia+')':''}</p>`+(html||`<p class="text-zinc-400 text-sm p-4 bg-zinc-900 rounded-2xl">${texto}</p>`);
+        requestAnimationFrame(observeCards);
+    }catch(e){rd.innerHTML=`<p class="text-red-400 text-sm p-4">Error: ${e.message}</p>`;}
+    bt.disabled=false;bt.textContent='🔄 Re-analizar';
+}
+
+// ===== Fuentes =====
+function renderFuentes() {
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><p class="text-zinc-500 text-xs text-center mb-4 uppercase tracking-widest font-bold">Otras Fuentes</p><div class="space-y-3">${[{icon:'⛏️',name:'Betmines',desc:'Estadísticas y pronósticos',url:'https://betmines.com'},{icon:'📊',name:'Forebet',desc:'Predicciones matemáticas',url:'https://forebet.com'},{icon:'🔢',name:'AdamChoi',desc:'Datos históricos',url:'https://adamchoi.co.uk'},{icon:'⚡',name:'SofaScore',desc:'Resultados en vivo',url:'https://sofascore.com'}].map((s,i)=>`<a href="${s.url}" target="_blank" class="card flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800 hover:border-zinc-600 transition" style="transition-delay:${i*0.08}s"><span class="text-2xl">${s.icon}</span><div><p class="font-bold">${s.name}</p><p class="text-zinc-500 text-xs">${s.desc}</p></div><span class="ml-auto text-zinc-600">→</span></a>`).join('')}</div><div class="mt-6"><button onclick="shareApp()" class="w-full py-4 bg-zinc-800 text-yellow-400 rounded-2xl font-bold hover:bg-zinc-700 transition">📤 Compartir App</button></div></div>`;
+    requestAnimationFrame(observeCards);
+}
+
+// ===== Share =====
+function shareApp() {
+    const text = '🏆 Mira Pronos Camiloven — pronósticos deportivos con IA\nhttps://apex-athletics-pro.vercel.app';
+    if (navigator.share) {
+        navigator.share({ title:'Pronos Camiloven', text, url:'https://apex-athletics-pro.vercel.app' }).catch(()=>{});
+    } else {
+        navigator.clipboard.writeText(text).then(()=>showToast('📋 Link copiado')).catch(()=>showToast('No se pudo copiar', true));
     }
 }
 
-function renderAnalisisResult(partidos) {
-    const result = document.getElementById('analisisResult');
-    if (!partidos.length) { result.innerHTML = '<p class="text-zinc-500 text-center mt-8">No se encontraron partidos</p>'; return; }
-
-    const colores = { LOCAL: 'border-green-500', EMPATE: 'border-yellow-500', VISITA: 'border-blue-500' };
-    const iconos = { LOCAL: '🏠', EMPATE: '🤝', VISITA: '✈️' };
-    const total = partidos.length;
-    const altas = partidos.filter(p => (p.confianza || 0) >= 70).length;
-    const avgConf = Math.round(partidos.reduce((a, p) => a + (p.confianza || 0), 0) / total);
-
-    const summary = `
-        <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30">
-            <div class="flex justify-between items-center mb-3">
-                <p class="text-yellow-400 font-bold text-sm uppercase tracking-widest">📊 Resumen</p>
-                <span class="text-zinc-500 text-xs">${total} partidos</span>
-            </div>
-            <div class="flex items-center justify-center gap-6 mb-3">
-                ${donutChart(avgConf, 80, 8)}
-                <div class="grid grid-cols-2 gap-3 text-center">
-                    <div class="bg-zinc-800 rounded-xl p-2"><p class="text-xl font-bold text-green-400">${altas}</p><p class="text-zinc-500 text-xs">Alta conf.</p></div>
-                    <div class="bg-zinc-800 rounded-xl p-2"><p class="text-xl font-bold text-yellow-400">${total - altas}</p><p class="text-zinc-500 text-xs">Media/baja</p></div>
-                </div>
-            </div>
-        </div>`;
-
-    const lista = partidos.map((p, i) => {
-        const conf = p.confianza || 0;
-        const colortxt = conf >= 70 ? 'text-green-400' : conf >= 50 ? 'text-yellow-400' : 'text-zinc-400';
-        const border = colores[p.veredicto] || 'border-zinc-700';
-        return `<div class="card bg-zinc-900 rounded-2xl p-4 mb-3 border ${border}" style="animation-delay:${i * 0.05}s">
-            <p class="font-bold text-sm mb-3">${p.partido}</p>
-            <div class="space-y-1 mb-3">
-                <div class="flex justify-between text-xs"><span class="text-zinc-500">🔨 Betmines</span><span class="text-zinc-300">${p.betmines || '−'}</span></div>
-                <div class="flex justify-between text-xs"><span class="text-zinc-500">📈 Forebet</span><span class="text-zinc-300">${p.forebet || '−'}</span></div>
-            </div>
-            <div class="bg-zinc-800 rounded-xl p-3 flex justify-between items-center">
-                <div>
-                    <p class="text-xs text-zinc-500 mb-1">🎯 Veredicto</p>
-                    <p class="font-bold text-lg">${iconos[p.veredicto] || ''} ${p.veredicto || '−'}</p>
-                    <p class="text-zinc-500 text-xs mt-1">${p.razon || ''}</p>
-                </div>
-                <div class="text-right"><p class="${colortxt} text-3xl font-bold">${conf}%</p><p class="text-zinc-600 text-xs">confianza</p></div>
-            </div>
-        </div>`;
-    }).join('');
-
-    result.innerHTML = summary + lista;
+// ===== Notificaciones =====
+function requestNotifPermission() {
+    if (!('Notification' in window)) { showToast('Tu navegador no soporta notificaciones', true); return; }
+    Notification.requestPermission().then(perm => {
+        if (perm === 'granted') {
+            showToast('🔔 Notificaciones activadas');
+            scheduleMatchNotifications();
+        } else {
+            showToast('Notificaciones bloqueadas', true);
+        }
+    });
 }
 
-// ===== Vista Fuentes =====
-
-function renderFuentes() {
-    document.getElementById('mainContent').innerHTML = `
-        <div class="p-4 view-fade-enter">
-            <p class="text-zinc-500 text-xs text-center mb-4 uppercase tracking-widest font-bold">Otras Fuentes</p>
-            <div class="space-y-3">
-                ${[
-                    { icon: '⛏️', name: 'Betmines', desc: 'Estadísticas y pronósticos', url: 'https://betmines.com' },
-                    { icon: '📊', name: 'Forebet', desc: 'Predicciones matemáticas', url: 'https://forebet.com' },
-                    { icon: '🔢', name: 'AdamChoi', desc: 'Datos históricos', url: 'https://adamchoi.co.uk' },
-                    { icon: '⚡', name: 'SofaScore', desc: 'Resultados en vivo', url: 'https://sofascore.com' }
-                ].map((s, i) => `
-                    <a href="${s.url}" target="_blank"
-                        class="card flex items-center gap-4 bg-zinc-900 rounded-2xl p-4 border border-zinc-800 hover:border-zinc-600 transition"
-                        style="animation-delay:${i * 0.08}s">
-                        <span class="text-2xl">${s.icon}</span>
-                        <div><p class="font-bold">${s.name}</p><p class="text-zinc-500 text-xs">${s.desc}</p></div>
-                        <span class="ml-auto text-zinc-600">→</span>
-                    </a>`).join('')}
-            </div>
-        </div>`;
+function scheduleMatchNotifications() {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const data = allData[currentSport] || [];
+    const now = Date.now();
+    data.forEach(row => {
+        const date = parseDate(row.date);
+        if (!date) return;
+        const diff = date.getTime() - now;
+        if (diff > 0 && diff < 86400000) { // próximas 24h
+            const notifyAt = Math.max(diff - 1800000, 5000); // 30 min antes
+            setTimeout(() => {
+                new Notification('⚽ Partido próximo', {
+                    body: `${row.home} vs ${row.away} empieza en 30 min`,
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⚽</text></svg>'
+                });
+            }, notifyAt);
+        }
+    });
 }
 
-// ===== Vista Config =====
-
+// ===== Config =====
 function renderConfig() {
-    document.getElementById('mainContent').innerHTML = `
-        <div class="p-4 view-fade-enter">
-            <h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2>
-            <div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4">
-                <div>
-                    <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY (veredictos)</p>
-                    <input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey') || ''}"
-                        class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition">
-                </div>
-                <div>
-                    <p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY (lectura imágenes)</p>
-                    <input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey') || ''}"
-                        class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition">
-                </div>
-                <div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700">
-                    <p class="text-xs text-green-400 font-bold mb-1">🔒 API-SPORTS KEY</p>
-                    <p class="text-xs text-zinc-500">Se gestiona desde el servidor (Vercel Environment Variables).</p>
-                </div>
-            </div>
-            <button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">
-                💾 Guardar
-            </button>
-            <p class="text-zinc-600 text-xs text-center mt-3">Las claves de IA se guardan solo en tu dispositivo 🔒</p>
-        </div>`;
+    const tz = getActiveTZ();
+    const tzLabel = userTimezone === 'chile' ? '🇨🇱 Chile (America/Santiago)' : `📱 Celular (${DETECTED_TZ})`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-green-400 font-bold mb-1">🔒 API-SPORTS KEY</p><p class="text-xs text-zinc-500">Se gestiona desde el servidor (Vercel).</p></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
-    localStorage.setItem('groqKey', document.getElementById('inputGroq').value.trim());
-    localStorage.setItem('geminiKey', document.getElementById('inputGemini').value.trim());
+    localStorage.setItem('groqKey',document.getElementById('inputGroq').value.trim());
+    localStorage.setItem('geminiKey',document.getElementById('inputGemini').value.trim());
+    const newTz = document.getElementById('inputTimezone').value;
+    if (newTz !== userTimezone) {
+        userTimezone = newTz;
+        localStorage.setItem('userTimezone', userTimezone);
+        resultsCache = {};
+    }
     showToast('✅ Configuración guardada');
     switchView('pronos');
 }
 
-// ===== Análisis del día con IA =====
-
-async function analizarHoy(sport, data, esSeleccionManual) {
-    if (!localStorage.getItem('groqKey')) { showToast('Configura Groq en ⚙️ Config', true); return; }
-
-    let hoy, totalDia;
-    if (esSeleccionManual) { hoy = data; totalDia = data.length; }
-    else {
-        const tk = new Date().toLocaleDateString('es-CL', { timeZone: USER_TZ });
-        hoy = data.filter(r => { const d = parseDate(r.date); return d && getLocalDayKey(d) === tk; });
-        if (!hoy.length) {
-            const dias = [...new Set(data.map(r => { const d = parseDate(r.date); return d ? getLocalDayKey(d) : null; }).filter(Boolean))];
-            if (dias.length) hoy = data.filter(r => { const d = parseDate(r.date); return d && getLocalDayKey(d) === dias[0]; });
-        }
-        totalDia = hoy.length; hoy = hoy.slice(0, 40);
-    }
-
-    if (sport !== 'soccer') { showToast('Análisis IA solo disponible para Fútbol', true); return; }
-    if (!hoy.length) { showToast('No hay partidos hoy', true); return; }
-
-    const rd = document.getElementById('analisisHoyResult');
-    const bt = document.getElementById('btnAnalizarHoy');
-    bt.disabled = true; bt.textContent = '⏳ Analizando...';
-    rd.innerHTML = `<div class="flex items-center gap-3 p-4 bg-zinc-900 rounded-2xl border border-yellow-500/30">
-        <div class="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full spinner"></div>
-        <p class="text-zinc-400 text-sm">Analizando ${hoy.length} partidos...</p>
-    </div>`;
-
-    const lista = hoy.map((r, i) => {
-        const h = Math.round((parseFloat(r['1x2_h'] || 0)) * 100), d = Math.round((parseFloat(r['1x2_d'] || 0)) * 100), a = Math.round((parseFloat(r['1x2_a'] || 0)) * 100);
-        const o15 = Math.round((parseFloat(r['o_1.5'] || 0)) * 100), o25 = Math.round((parseFloat(r['o_2.5'] || 0)) * 100), u25 = Math.round((parseFloat(r['u_2.5'] || 0)) * 100), u35 = Math.round((parseFloat(r['u_3.5'] || 0)) * 100);
-        return (i + 1) + '. ' + (r.home || '?') + ' vs ' + (r.away || '?') + ' [' + (r.league || '') + ']\n   1X2 -> Local:' + h + '% Empate:' + d + '% Visita:' + a + '%\n   Goles -> Over1.5:' + o15 + '% Over2.5:' + o25 + '% Under2.5:' + u25 + '% Under3.5:' + u35 + '%';
-    }).join('\n\n');
-
-    const prompt = 'Eres un analista experto en apuestas deportivas. Analiza estos ' + hoy.length + ' partidos:\n\n' + lista + '\n\nPara CADA partido escribe:\n---\nPartido: Local vs Visita\nVeredicto Principal: resultado 1x2\nMercado de Goles: Over/Under\nLectura del Modelo: análisis\nConfianza: Alta/Media/Baja\nRazonamiento Experto: 4-6 lineas\n---';
-
-    try {
-        const texto = await groqCall(prompt, 4000);
-        const partes = texto.split('---').filter(p => p.trim() && p.includes('Partido:'));
-        const html = partes.map(p => {
-            const lines = p.trim().split('\n').filter(l => l.trim());
-            const color = p.includes('Alta') ? 'border-green-500 bg-green-500/5' : p.includes('Media') ? 'border-yellow-500 bg-yellow-500/5' : 'border-zinc-700 bg-zinc-900';
-            return `<div class="card rounded-2xl p-4 mb-3 border ${color}">${lines.map(l => `<p class="text-sm mb-1">${l}</p>`).join('')}</div>`;
-        }).join('');
-        rd.innerHTML = `<p class="text-yellow-400 font-bold text-sm mb-3">🤖 ${partes.length} analizados${totalDia > 40 ? ' (de ' + totalDia + ' totales)' : ''}</p>` + (html || `<p class="text-zinc-400 text-sm p-4 bg-zinc-900 rounded-2xl">${texto}</p>`);
-    } catch (err) { rd.innerHTML = `<p class="text-red-400 text-sm p-4">Error: ${err.message}</p>`; }
-
-    bt.disabled = false; bt.textContent = '🔄 Re-analizar';
-}
-
-// ===== Vista Word =====
-
+// ===== Word =====
 function renderWord() {
-    const container = document.getElementById('mainContent');
-    const sports = Object.keys(allData).length ? Object.keys(allData) : ['soccer', 'tennis', 'basketball', 'hockey', 'volleyball', 'handball'];
-
-    let sportSelector = '<select id="wordSportSelect" class="bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-yellow-400 transition">';
-    sports.forEach(s => {
-        const label = s.charAt(0).toUpperCase() + s.slice(1);
-        const icon = SPORT_ICONS[s] || '🏟';
-        sportSelector += `<option value="${s}">${icon} ${label}${wordContents[s] ? ' ✅' : ''}</option>`;
-    });
-    sportSelector += '</select>';
-
-    container.innerHTML = `
-        <div class="p-4 view-fade-enter">
-            <div class="bg-zinc-900 rounded-2xl p-6 mb-4 border border-zinc-800">
-                <div class="flex flex-wrap gap-4 items-center mb-4">
-                    <div class="flex items-center gap-2"><span class="text-zinc-400 text-sm">Deporte:</span>${sportSelector}</div>
-                    <button id="wordUploadBtn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-2xl font-bold text-white text-sm flex items-center gap-2 transition">📂 Cargar Word</button>
-                    <input type="file" id="wordFileInput" accept=".docx" style="display:none;">
-                    <span id="wordFileName" class="text-zinc-400 text-sm">Ningún archivo cargado</span>
-                    <span id="wordStatus" class="text-zinc-500 text-xs"></span>
-                </div>
-            </div>
-            <div id="wordContent" class="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 min-h-[300px] text-zinc-300 text-sm leading-relaxed">
-                <div class="flex flex-col items-center justify-center h-64 text-zinc-600">
-                    <span class="text-5xl mb-4">📄</span><p>Selecciona un deporte y carga su archivo Word</p>
-                </div>
-            </div>
-        </div>`;
-
-    const select = document.getElementById('wordSportSelect');
-    select.addEventListener('change', function () {
-        const sport = this.value;
-        if (wordContents[sport]) {
-            document.getElementById('wordContent').innerHTML = wordContents[sport];
-            document.getElementById('wordFileName').innerHTML = `📄 ${sport} (cargado)`;
-        } else {
-            document.getElementById('wordContent').innerHTML = `<div class="flex flex-col items-center justify-center h-64 text-zinc-600"><span class="text-5xl mb-4">📄</span><p>No hay archivo para ${sport}</p></div>`;
-            document.getElementById('wordFileName').innerHTML = `Ningún archivo para ${sport}`;
-        }
-        document.getElementById('wordStatus').innerHTML = '';
-    });
-
-    document.getElementById('wordUploadBtn').onclick = () => document.getElementById('wordFileInput').click();
-    document.getElementById('wordFileInput').onchange = function (e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const currentSportVal = select.value;
-        document.getElementById('wordStatus').innerHTML = '⏳ Procesando...';
-        const reader = new FileReader();
-        reader.onload = function (ev) {
-            mammoth.convertToHtml({ arrayBuffer: ev.target.result })
-                .then(result => {
-                    wordContents[currentSportVal] = result.value;
-                    document.getElementById('wordContent').innerHTML = result.value;
-                    document.getElementById('wordFileName').innerHTML = `📄 ${file.name} (${currentSportVal})`;
-                    document.getElementById('wordStatus').innerHTML = '✅ Cargado';
-                    const opt = select.querySelector(`option[value="${currentSportVal}"]`);
-                    if (opt) { const l = opt.textContent.replace(' ✅', ''); opt.textContent = l + ' ✅'; }
-                })
-                .catch(err => {
-                    document.getElementById('wordContent').innerHTML = `<div class="text-red-400 p-8 text-center">❌ Error: ${err.message}</div>`;
-                    document.getElementById('wordStatus').innerHTML = '❌ Error';
-                });
-        };
-        reader.readAsArrayBuffer(file);
-    };
-
-    const initialSport = select ? select.value : (sports[0] || 'soccer');
-    if (wordContents[initialSport]) {
-        document.getElementById('wordContent').innerHTML = wordContents[initialSport];
-        document.getElementById('wordFileName').innerHTML = `📄 ${initialSport} (cargado)`;
-    }
+    const container=document.getElementById('mainContent');
+    const sports=Object.keys(allData).length?Object.keys(allData):['soccer','tennis','basketball','hockey','volleyball','handball'];
+    let sel='<select id="wordSportSelect" class="bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-yellow-400">';
+    sports.forEach(s=>{sel+=`<option value="${s}">${SPORT_ICONS[s]||'🏟'} ${s.charAt(0).toUpperCase()+s.slice(1)}${wordContents[s]?' ✅':''}</option>`;});sel+='</select>';
+    container.innerHTML=`<div class="p-4 view-fade-enter"><div class="bg-zinc-900 rounded-2xl p-6 mb-4 border border-zinc-800"><div class="flex flex-wrap gap-4 items-center mb-4"><div class="flex items-center gap-2"><span class="text-zinc-400 text-sm">Deporte:</span>${sel}</div><button id="wordUploadBtn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-2xl font-bold text-white text-sm transition">📂 Cargar Word</button><input type="file" id="wordFileInput" accept=".docx" style="display:none;"><span id="wordFileName" class="text-zinc-400 text-sm">Ningún archivo</span><span id="wordStatus" class="text-zinc-500 text-xs"></span></div></div><div id="wordContent" class="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 min-h-[300px] text-zinc-300 text-sm leading-relaxed"><div class="flex flex-col items-center justify-center h-64 text-zinc-600"><span class="text-5xl mb-4">📄</span><p>Selecciona un deporte y carga su archivo Word</p></div></div></div>`;
+    const select=document.getElementById('wordSportSelect');
+    select.addEventListener('change',function(){const s=this.value;if(wordContents[s]){document.getElementById('wordContent').innerHTML=wordContents[s];document.getElementById('wordFileName').innerHTML=`📄 ${s} (cargado)`;}else{document.getElementById('wordContent').innerHTML=`<div class="flex flex-col items-center justify-center h-64 text-zinc-600"><span class="text-5xl mb-4">📄</span><p>No hay archivo para ${s}</p></div>`;}document.getElementById('wordStatus').innerHTML='';});
+    document.getElementById('wordUploadBtn').onclick=()=>document.getElementById('wordFileInput').click();
+    document.getElementById('wordFileInput').onchange=function(e){const file=e.target.files[0];if(!file)return;const cs=select.value;document.getElementById('wordStatus').innerHTML='⏳ Procesando...';const r=new FileReader();r.onload=function(ev){mammoth.convertToHtml({arrayBuffer:ev.target.result}).then(res=>{wordContents[cs]=res.value;document.getElementById('wordContent').innerHTML=res.value;document.getElementById('wordFileName').innerHTML=`📄 ${file.name} (${cs})`;document.getElementById('wordStatus').innerHTML='✅';const opt=select.querySelector(`option[value="${cs}"]`);if(opt){const l=opt.textContent.replace(' ✅','');opt.textContent=l+' ✅';}}).catch(err=>{document.getElementById('wordContent').innerHTML=`<div class="text-red-400 p-8 text-center">❌ ${err.message}</div>`;});};r.readAsArrayBuffer(file);};
+    const init=select?select.value:(sports[0]||'soccer');
+    if(wordContents[init]){document.getElementById('wordContent').innerHTML=wordContents[init];document.getElementById('wordFileName').innerHTML=`📄 ${init} (cargado)`;}
 }
 
 // ===== Init =====
-window.onload = () => {
-    authToken = localStorage.getItem('authToken') || null;
-    try { const s = localStorage.getItem('apexData'); if (s) allData = JSON.parse(s); } catch { allData = {}; }
+window.onload=()=>{
+    authToken=localStorage.getItem('authToken')||null;
+    userTimezone=localStorage.getItem('userTimezone')||'auto';
+    try{const s=localStorage.getItem('apexData');if(s)allData=JSON.parse(s);}catch{allData={};}
 };
