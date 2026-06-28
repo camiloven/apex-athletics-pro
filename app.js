@@ -631,6 +631,78 @@ async function fetchRealResults(sport, dates) {
     return { games: allGames, debug: `${allGames.length} resultados · ${apiRequestCount}/${API_DAILY_LIMIT} requests hoy` };
 }
 
+// ===== Football-Data.org Fallback (solo fútbol) =====
+const FD_ORG_BASE = 'https://api.football-data.org/v4';
+const FD_ORG_LEAGUES = {
+    'Premier League': 'PL', 'PL': 'PL', 'England': 'PL',
+    'La Liga': 'PD', 'PD': 'PD', 'Spain': 'PD', 'LaLiga': 'PD',
+    'Bundesliga': 'BL1', 'BL1': 'BL1', 'Germany': 'BL1',
+    'Serie A': 'SA', 'SA': 'SA', 'Italy': 'SA',
+    'Ligue 1': 'FL1', 'FL1': 'FL1', 'France': 'FL1',
+    'Champions League': 'CL', 'CL': 'CL', 'UEFA Champions League': 'CL',
+    'Eredivisie': 'DED', 'Netherlands': 'DED',
+    'Primeira Liga': 'PPL', 'Portugal': 'PPL',
+    'Brasileirão': 'BSA', 'Brazil': 'BSA', 'Serie A Brazil': 'BSA',
+    'Championship': 'ELC', 'England Championship': 'ELC',
+};
+
+function mapFdOrgStatus(status) {
+    const map = {
+        'FINISHED': 'FT', 'IN_PLAY': 'LIVE', 'PAUSED': 'HT',
+        'SUSPENDED': 'SUSP', 'POSTPONED': 'PST', 'CANCELLED': 'CANC',
+        'SCHEDULED': 'NS', 'TIMED': 'NS',
+    };
+    return map[status] || status;
+}
+
+function mapFdOrgToApiSports(match) {
+    // Map football-data.org response to api-sports format
+    return {
+        fixture: {
+            status: { short: mapFdOrgStatus(match.status) },
+            date: match.utcDate,
+            timestamp: new Date(match.utcDate).getTime() / 1000,
+        },
+        teams: {
+            home: { name: match.homeTeam?.name || '?', logo: null },
+            away: { name: match.awayTeam?.name || '?', logo: null },
+        },
+        goals: {
+            home: match.score?.fullTime?.home ?? null,
+            away: match.score?.fullTime?.away ?? null,
+        },
+        league: { name: match.competition?.name || '' },
+    };
+}
+
+async function fetchFootballDataOrg(dates) {
+    const apiKey = localStorage.getItem('fdOrgKey') || '';
+    if (!apiKey) return { games: [], debug: 'Sin key football-data.org' };
+    if (!dates?.length) return { games: [], debug: 'Sin fechas' };
+
+    let allGames = [];
+    for (const date of dates) {
+        const headers = { 'X-Auth-Token': apiKey };
+        const url = `${FD_ORG_BASE}/matches?dateFrom=${date}&dateTo=${date}`;
+        try {
+            const res = await fetch(url, { headers });
+            if (res.status === 429) {
+                return { games: allGames, debug: `Rate limit football-data.org (${allGames.length} cargados)` };
+            }
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (data.matches) {
+                allGames = allGames.concat(data.matches.map(mapFdOrgToApiSports));
+            }
+        } catch (err) {
+            return { games: allGames, debug: `Error fd.org: ${err.message}` };
+        }
+        // Respetar rate limit: 10 req/min → pausa mínima
+        if (dates.length > 1) await new Promise(r => setTimeout(r, 200));
+    }
+    return { games: allGames, debug: `${allGames.length} resultados (football-data.org)` };
+}
+
 function findMatch(row, apiGames) {
     const h=normalize(row.home),a=normalize(row.away);
     for(const g of apiGames){ const gh=normalize(g.teams?.home?.name||''),ga=normalize(g.teams?.away?.name||''); if((gh.includes(h)||h.includes(gh))&&(ga.includes(a)||a.includes(ga))) return g; }
@@ -652,7 +724,18 @@ async function renderResultados(sport) {
     }
 
     const apiResult = await fetchRealResults(sport, dates);
-    const apiGames = apiResult.games || [];
+    let apiGames = apiResult.games || [];
+    let apiSource = 'api-sports.io';
+    
+    // Fallback: football-data.org si api-sports no devolvió nada (solo fútbol)
+    if (!apiGames.length && sport === 'soccer') {
+        const fdResult = await fetchFootballDataOrg(dates);
+        if (fdResult.games?.length) {
+            apiGames = fdResult.games;
+            apiSource = 'football-data.org';
+            apiResult.debug = fdResult.debug;
+        }
+    }
     
     // Debug info si no hay resultados
     if (!apiGames.length) {
@@ -1204,13 +1287,14 @@ function renderConfig() {
         </div>`;
     }
 
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">⚽ API-SPORTS KEY (resultados)</p><input type="password" id="inputSports" placeholder="Tu clave de api-sports.io" value="${localStorage.getItem('sportsKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GROQ API KEY</p><input type="password" id="inputGroq" placeholder="gsk_..." value="${localStorage.getItem('groqKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🔑 GEMINI API KEY</p><input type="password" id="inputGemini" placeholder="AIza..." value="${localStorage.getItem('geminiKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">⚽ API-SPORTS KEY (resultados)</p><input type="password" id="inputSports" placeholder="Tu clave de api-sports.io" value="${localStorage.getItem('sportsKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="password" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${localStorage.getItem('fdOrgKey')||''}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
     localStorage.setItem('groqKey',document.getElementById('inputGroq').value.trim());
     localStorage.setItem('geminiKey',document.getElementById('inputGemini').value.trim());
     localStorage.setItem('sportsKey',document.getElementById('inputSports').value.trim());
+    localStorage.setItem('fdOrgKey',document.getElementById('inputFdOrg').value.trim());
     const newTz = document.getElementById('inputTimezone').value;
     if (newTz !== userTimezone) {
         userTimezone = newTz;
