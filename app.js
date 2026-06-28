@@ -460,7 +460,7 @@ function buildCard(sport, row, leagueColor, matchId, index) {
 
         // Stats de goles (mostrar los que existan, max 6)
         const goalPills = allGoalKeys.slice(0,6).map(k => {
-            const label = k.replace('o_','O ').replace('u_','U ');
+            const label = k.replace('o_','Más ').replace('u_','Menos ');
             const val = pct(row[k]);
             const cls = val>=65?'pct-high':val>=50?'pct-mid':'pct-low';
             return `<div class="stat-pill bg-zinc-800"><div class="${cls} text-lg font-bold">${val}%</div><div class="text-zinc-500 text-xs mt-0.5">${label}</div></div>`;
@@ -478,7 +478,7 @@ function buildCard(sport, row, leagueColor, matchId, index) {
             <div class="grid grid-cols-3 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(d,'Empate')}${dynamicPill(a,'Visita')}</div>
             ${goalCols>0?`<div class="grid grid-cols-${goalCols} gap-2 mt-2">${goalPills}</div>`:''}`;
     } else if (sport==='tennis') {
-        div.innerHTML=`<div class="flex justify-between items-start mb-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}</div>${cdHTML}<div class="grid grid-cols-2 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(a,'Visita')}</div><div class="grid grid-cols-2 gap-2 mt-2">${dynamicPill(pct(row['o_2.5']),'O 2.5')}${dynamicPill(pct(row['u_2.5']),'U 2.5')}</div>`;
+        div.innerHTML=`<div class="flex justify-between items-start mb-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}</div>${cdHTML}<div class="grid grid-cols-2 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(a,'Visita')}</div><div class="grid grid-cols-2 gap-2 mt-2">${dynamicPill(pct(row['o_2.5']),'Más 2.5')}${dynamicPill(pct(row['u_2.5']),'Menos 2.5')}</div>`;
     } else {
         div.innerHTML=`<div class="flex justify-between items-start mb-2"><p class="font-bold text-sm">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>${timeStr?`<span class="text-xs font-bold px-2 py-1 rounded-lg" style="background:${leagueColor}22;color:${leagueColor}">${timeStr}</span>`:''}</div>${cdHTML}<div class="grid grid-cols-2 gap-2 mt-3">${dynamicPill(h,'Local')}${dynamicPill(a,'Visita')}</div>`;
     }
@@ -720,7 +720,7 @@ async function analizarHoy(sport,data,sel){
         const h=Math.round((parseFloat(r['1x2_h']||0))*100),d=Math.round((parseFloat(r['1x2_d']||0))*100),a=Math.round((parseFloat(r['1x2_a']||0))*100);
         // Mercados de goles dinámicos
         const goalStats = Object.keys(r).filter(k=>k.startsWith('o_')||k.startsWith('u_')).map(k=>{
-            const label=k.replace('o_','Over').replace('u_','Under');
+            const label=k.replace('o_','Más ').replace('u_','Menos ');
             return label+':'+Math.round((parseFloat(r[k]||0))*100)+'%';
         }).join(' ');
         return(i+1)+'. '+(r.home||'?')+' vs '+(r.away||'?')+' ['+(r.league||'')+']\n   1X2 -> Local:'+h+'% Empate:'+d+'% Visita:'+a+'%\n   Goles -> '+goalStats;
