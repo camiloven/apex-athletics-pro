@@ -22,7 +22,7 @@
     <video autoplay loop muted playsinline><source src="intro-video.mp4" type="video/mp4"></video>
     <canvas id="particles-canvas"></canvas>
     <div class="hero-content text-center relative z-10 px-6">
-        <h1 id="heroTitle" class="text-7xl font-extrabold tracking-tighter neon title-animate">PRONOS CAMILOVEN</h1>
+        <h1 id="heroTitle" class="text-7xl font-extrabold tracking-tighter gradient-gold title-animate">PRONOS CAMILOVEN</h1>
         <p class="subtitle text-yellow-400 mt-4 text-xl font-medium opacity-0" id="heroSub" style="animation: fadeInUp 0.6s 1s forwards">by camiloven</p>
         <button onclick="goToNext()" id="btnEntrar"
             class="btn-enter btn-glow mt-20 bg-yellow-400 text-black px-16 py-7 rounded-3xl text-2xl font-extrabold opacity-0"
@@ -51,9 +51,9 @@
 
 <!-- ===== App Screen ===== -->
 <div id="appScreen" class="hidden min-h-screen bg-zinc-950 flex flex-col">
-    <div class="sticky top-0 bg-zinc-900/95 backdrop-blur border-b border-zinc-800 z-50">
+    <div class="sticky top-0 glass border-b border-zinc-800 z-50">
         <div class="flex justify-between items-center px-4 pt-4 pb-2">
-            <h1 class="text-xl font-extrabold neon">PRONOS CAMILOVEN</h1>
+            <h1 class="text-xl font-extrabold gradient-gold">PRONOS CAMILOVEN</h1>
             <div class="flex items-center gap-2">
                 <button onclick="requestNotifPermission()" id="btnNotif" title="Notificaciones"
                     class="text-zinc-500 text-sm bg-zinc-800 px-2 py-1 rounded-full hover:bg-zinc-700 transition hidden">
@@ -69,7 +69,7 @@
 
     <div id="mainContent" class="flex-1 pb-32"></div>
 
-    <div class="fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 z-50">
+    <div class="fixed bottom-0 left-0 right-0 glass border-t border-zinc-800 z-50">
         <div class="flex">
             <button onclick="switchView('pronos')" id="navPronos" class="nav-tab active text-yellow-400">
                 <span class="nav-icon">📋</span>Pronos

@@ -92,7 +92,12 @@ function pctClass(v) {
 
 function dynamicPill(valuePct, label) {
     const cls = pctClass(valuePct);
-    return `<div class="stat-pill bg-zinc-800"><div class="${cls} text-lg font-bold">${valuePct}%</div><div class="text-zinc-500 text-xs mt-0.5">${label}</div></div>`;
+    const barCls = valuePct >= 65 ? 'high' : valuePct >= 50 ? 'mid' : 'low';
+    return `<div class="stat-pill bg-zinc-800">
+        <div class="${cls} text-lg font-bold">${valuePct}%</div>
+        <div class="text-zinc-500 text-xs mt-0.5">${label}</div>
+        <div class="pct-bar-container"><div class="pct-bar ${barCls}" data-width="${valuePct}"></div></div>
+    </div>`;
 }
 
 function donutChart(value, size=80, stroke=8) {
@@ -345,6 +350,12 @@ const cardObserver = new IntersectionObserver((entries) => {
 
 function observeCards() {
     document.querySelectorAll('.card:not(.visible)').forEach(c => cardObserver.observe(c));
+    // Animar barras de porcentaje
+    setTimeout(() => {
+        document.querySelectorAll('.pct-bar[data-width]').forEach(bar => {
+            bar.style.width = bar.dataset.width + '%';
+        });
+    }, 100);
 }
 
 // ===== Vista Pronos =====
@@ -425,6 +436,26 @@ function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
 
     const wrap=document.createElement('div'); wrap.className='p-4';
     let cardIdx=0;
+
+    // Sección de favoritos
+    const favMatches = parsed.filter(r => isFavorite(r.home || '') || isFavorite(r.away || ''));
+    if (favMatches.length > 0) {
+        const favDiv = document.createElement('div');
+        favDiv.className = 'fav-section mb-4';
+        favDiv.innerHTML = `<p class="text-xs text-yellow-400 font-bold mb-3">⭐ Favoritos (${favMatches.length})</p>`;
+        favMatches.forEach(r => {
+            const color = leagueColorMap[r.league||''] || '#eab308';
+            const mid = (r.home||'')+'|'+(r.away||'')+'|'+(r.date||'');
+            try {
+                favDiv.appendChild(buildCard(sport, r, color, mid, cardIdx));
+                cardIdx++;
+            } catch (cardErr) {
+                console.error('Error en card favorito:', r, cardErr);
+            }
+        });
+        wrap.appendChild(favDiv);
+    }
+
     Object.values(byDay).forEach(dg=>{
         const dd=document.createElement('div'); dd.className='day-header rounded-xl px-4 py-3 mb-4 mt-2'; dd.innerHTML=`<span class="font-bold text-yellow-400">${dg.label}</span>`; wrap.appendChild(dd);
         Object.entries(dg.leagues).forEach(([ln,lm])=>{
@@ -513,6 +544,7 @@ function buildCard(sport, row, leagueColor, matchId, index) {
                         <img class="team-logo-home w-5 h-5 hidden" src="" onerror="this.style.display='none'">
                         <p class="font-bold text-sm leading-tight">${row.home||'?'} <span class="text-zinc-500">vs</span> ${row.away||'?'}</p>
                         <img class="team-logo-away w-5 h-5 hidden" src="" onerror="this.style.display='none'">
+                        ${renderFavStar(row.home||'')}
                     </div>
                     ${hot}${cdHTML}</div>
                 </div>
@@ -1109,6 +1141,30 @@ async function loadTeamLogos() {
 // ===== Team Form (últimos 5 resultados) =====
 let teamFormCache = {};
 let teamLogoCache = JSON.parse(localStorage.getItem('teamLogoCache') || '{}');
+let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+
+// ===== Favorites =====
+function toggleFavorite(teamName, el) {
+    const idx = favorites.indexOf(teamName);
+    if (idx >= 0) {
+        favorites.splice(idx, 1);
+        if (el) el.classList.remove('active');
+    } else {
+        favorites.push(teamName);
+        if (el) el.classList.add('active');
+    }
+    localStorage.setItem('favorites', JSON.stringify(favorites));
+    playClick();
+}
+
+function isFavorite(teamName) {
+    return favorites.includes(teamName);
+}
+
+function renderFavStar(teamName) {
+    const active = isFavorite(teamName) ? 'active' : '';
+    return `<span class="fav-star ${active}" onclick="event.stopPropagation();toggleFavorite('${teamName.replace(/'/g,"\\'")}', this)" title="Favorito">⭐</span>`;
+}
 
 async function getTeamForm(teamName) {
     if (teamFormCache[teamName]) return teamFormCache[teamName];
