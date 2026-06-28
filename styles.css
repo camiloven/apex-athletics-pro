@@ -725,3 +725,5 @@ body {
 }
 body.light-mode .theme-toggle { background: var(--gold); }
 body.light-mode .theme-toggle .toggle-dot { transform: translateX(22px); }
+.theme-toggle.active { background: var(--gold); }
+.theme-toggle.active .toggle-dot { transform: translateX(22px); }

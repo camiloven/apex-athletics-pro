@@ -9,6 +9,7 @@ let leagueColorMap = {}, resultsCache = {}, authToken = null;
 let betminesImgs = [], forebetImgs = [], wordContents = {};
 let analisisSelectedMatches = [];
 let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+let isAdmin = localStorage.getItem('isAdmin') === 'true';
 let countdownInterval = null;
 let autoRefreshInterval = null;
 const _todayKey = 'apiRequests_' + new Date().toISOString().split('T')[0];
@@ -180,13 +181,23 @@ function goToNext() {
                 localStorage.setItem('apexData', JSON.stringify(allData));
                 if (!isTokenValid()) authenticate().catch(()=>{});
                 showApp(Object.keys(allData));
-            } else {
+            } else if (isAdmin) {
                 document.getElementById('uploadScreen').classList.remove('hidden');
                 authenticate().then(()=>loadExcel()).catch(()=>{});
+            } else {
+                document.getElementById('uploadScreen').classList.remove('hidden');
+                document.getElementById('uploadInfo').textContent = '⏳ Cargando pronósticos...';
+                document.querySelector('#uploadScreen button').style.display = 'none';
             }
         }).catch(() => {
-            document.getElementById('uploadScreen').classList.remove('hidden');
-            authenticate().then(()=>loadExcel()).catch(()=>{});
+            if (isAdmin) {
+                document.getElementById('uploadScreen').classList.remove('hidden');
+                authenticate().then(()=>loadExcel()).catch(()=>{});
+            } else {
+                document.getElementById('uploadScreen').classList.remove('hidden');
+                document.getElementById('uploadInfo').textContent = '⚠️ No se pudieron cargar los pronósticos. Intenta más tarde.';
+                document.querySelector('#uploadScreen button').style.display = 'none';
+            }
         });
     }
 }
@@ -197,6 +208,11 @@ function goToUpload() {
     document.getElementById('uploadScreen').classList.remove('hidden');
     const btn = document.getElementById('btnUsarGuardado');
     const info = document.getElementById('uploadInfo');
+    if (!isAdmin) {
+        info.textContent = 'Solo el administrador puede subir pronósticos';
+        btn.classList.add('hidden');
+        return;
+    }
     if (Object.keys(allData).length > 0) {
         const dep = Object.keys(allData).join(', ');
         const total = Object.values(allData).reduce((a,r)=>a+r.length,0);
@@ -1322,7 +1338,7 @@ function renderConfig() {
         </div>`;
     }
 
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(groqOK)} 🔑 GROQ API KEY</p><input type="text" id="inputGroq" placeholder="gsk_..." value="${escapeAttr(groqOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(geminiOK)} 🔑 GEMINI API KEY</p><input type="text" id="inputGemini" placeholder="AIza..." value="${escapeAttr(geminiOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(sportsOK)} ⚽ API-SPORTS KEY (resultados)</p><input type="text" id="inputSports" placeholder="Tu clave de api-sports.io" value="${escapeAttr(sportsOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(fdOK)} ⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="text" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${escapeAttr(fdOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-yellow-400 font-bold mb-2">☁️ Datos Compartidos</p><p class="text-xs text-zinc-500 mb-3">Sincroniza tus pronósticos para que otros usuarios los vean</p><button onclick="exportData()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm transition mb-2">📤 Exportar datos (JSON)</button><button onclick="loadFromBackend()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-sm transition">📥 Cargar datos del servidor</button></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(groqOK)} 🔑 GROQ API KEY</p><input type="text" id="inputGroq" placeholder="gsk_..." value="${escapeAttr(groqOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(geminiOK)} 🔑 GEMINI API KEY</p><input type="text" id="inputGemini" placeholder="AIza..." value="${escapeAttr(geminiOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(sportsOK)} ⚽ API-SPORTS KEY (resultados)</p><input type="text" id="inputSports" placeholder="Tu clave de api-sports.io" value="${escapeAttr(sportsOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(fdOK)} ⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="text" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${escapeAttr(fdOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-yellow-400 font-bold mb-2">☁️ Datos Compartidos</p><p class="text-xs text-zinc-500 mb-3">Sincroniza tus pronósticos para que otros usuarios los vean</p><button onclick="exportData()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm transition mb-2">📤 Exportar datos (JSON)</button><button onclick="loadFromBackend()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-sm transition mb-2">📥 Cargar datos del servidor</button><div class="flex items-center justify-between"><p class="text-xs text-zinc-400">🔑 Modo Admin</p><div class="theme-toggle ${isAdmin?'active':''}" onclick="toggleAdmin()"><div class="toggle-dot"></div></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
@@ -1338,6 +1354,13 @@ function saveConfig() {
     }
     showToast('✅ Configuración guardada');
     switchView('pronos');
+}
+
+function toggleAdmin() {
+    isAdmin = !isAdmin;
+    localStorage.setItem('isAdmin', isAdmin);
+    showToast(isAdmin ? '🔑 Modo Admin activado' : '👁️ Modo Usuario');
+    switchView('config');
 }
 
 // ===== Backend Sync =====
