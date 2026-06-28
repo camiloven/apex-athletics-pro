@@ -168,20 +168,32 @@ function loadExcel() {
         if (!file) return;
         if (file.size > 10*1024*1024) { showToast('Archivo muy grande (máx 10MB)', true); return; }
         const reader = new FileReader();
+        reader.onerror = () => showToast('Error al leer el archivo', true);
         reader.onload = function(ev) {
             try {
-                const wb = XLSX.read(new Uint8Array(ev.target.result), { type:'array' });
+                const data = new Uint8Array(ev.target.result);
+                const wb = XLSX.read(data, { type:'array' });
                 allData = {};
                 wb.SheetNames.forEach(name => {
-                    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name]);
-                    if (rows.length > 0) allData[name] = rows;
+                    try {
+                        const rows = XLSX.utils.sheet_to_json(wb.Sheets[name]);
+                        if (rows.length > 0) allData[name] = rows;
+                    } catch (sheetErr) {
+                        console.warn('Error en hoja ' + name + ':', sheetErr);
+                    }
                 });
-                if (!Object.keys(allData).length) { showToast('Sin datos válidos', true); return; }
+                if (!Object.keys(allData).length) {
+                    showToast('No se encontraron datos válidos en el archivo', true);
+                    return;
+                }
                 localStorage.setItem('apexData', JSON.stringify(allData));
                 resultsCache = {};
                 showToast(`✅ ${Object.keys(allData).length} deporte(s) cargado(s)`);
                 showApp(Object.keys(allData));
-            } catch { showToast('Error al leer Excel', true); }
+            } catch (err) {
+                console.error('Error parsing Excel:', err);
+                showToast('Error al leer Excel: ' + (err.message || 'formato inválido'), true);
+            }
         };
         reader.readAsArrayBuffer(file);
     };
@@ -294,6 +306,7 @@ function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
     if (!container) return;
     container.innerHTML = '';
 
+    try {
     // Filtrar
     let filtered = data;
     if (filterLeague !== 'all') filtered = filtered.filter(r => (r.league||'Sin liga') === filterLeague);
@@ -344,6 +357,11 @@ function renderPronosContent(sport, data, filterLeague='all', searchQuery='') {
     if (!filtered.length) wrap.innerHTML='<p class="text-zinc-500 text-center mt-16">Sin resultados</p>';
     container.appendChild(wrap);
     requestAnimationFrame(observeCards);
+
+    } catch (err) {
+        console.error('Error renderizando partidos:', err);
+        container.innerHTML = `<div class="p-4 text-center mt-16"><p class="text-red-400 mb-2">Error al mostrar los partidos</p><p class="text-zinc-500 text-xs">${err.message}</p><button onclick="localStorage.removeItem('apexData');location.reload()" class="mt-4 bg-zinc-800 text-yellow-400 px-4 py-2 rounded-xl text-sm">Limpiar datos y recargar</button></div>`;
+    }
 }
 
 function filterPronos() {
@@ -722,5 +740,19 @@ function renderWord() {
 window.onload=()=>{
     authToken=localStorage.getItem('authToken')||null;
     userTimezone=localStorage.getItem('userTimezone')||'auto';
-    try{const s=localStorage.getItem('apexData');if(s)allData=JSON.parse(s);}catch{allData={};}
+    try {
+        const s = localStorage.getItem('apexData');
+        if (s) {
+            allData = JSON.parse(s);
+            // Verificar que los datos sean válidos
+            if (typeof allData !== 'object' || Array.isArray(allData)) {
+                allData = {};
+                localStorage.removeItem('apexData');
+            }
+        }
+    } catch (err) {
+        console.error('Error cargando datos guardados:', err);
+        allData = {};
+        localStorage.removeItem('apexData');
+    }
 };
