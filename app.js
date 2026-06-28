@@ -1374,37 +1374,56 @@ async function loadLiveScores() {
     const apiKey = localStorage.getItem('sportsKey') || '';
     const content = document.getElementById('liveContent');
     const refreshEl = document.getElementById('liveRefresh');
-    if (!content || !apiKey) return;
-
-    const sports = [
-        { key: 'football', label: '⚽ Fútbol', endpoint: 'v3.football.api-sports.io', path: 'fixtures?live=all' },
-        // Solo fútbol para ahorrar requests
-    ];
+    if (!content) return;
 
     let allMatches = [];
 
-    for (const sport of sports) {
-        if (!canMakeRequest()) break;
+    // Intentar api-sports primero
+    if (apiKey && canMakeRequest()) {
         try {
             trackApiRequest();
-            const res = await fetch(`https://${sport.endpoint}/${sport.path}`, { headers: { 'x-apisports-key': apiKey } });
+            const res = await fetch('https://v3.football.api-sports.io/fixtures?live=all', { headers: { 'x-apisports-key': apiKey } });
             const data = await res.json();
-            const matches = (data.response || []).map(m => ({
-                sport: sport.label,
-                home: m.teams?.home?.name || m.teams?.home?.player || '?',
-                away: m.teams?.away?.name || m.teams?.away?.player || '?',
-                homeLogo: m.teams?.home?.logo || '',
-                awayLogo: m.teams?.away?.logo || '',
-                score: sport.key === 'football'
-                    ? `${m.goals?.home ?? 0}-${m.goals?.away ?? 0}`
-                    : m.scores ? `${m.scores?.home?.total ?? m.scores?.home?.quarter ?? 0}-${m.scores?.away?.total ?? m.scores?.away?.quarter ?? 0}` : '?-?',
-                minute: m.fixture?.status?.elapsed ? `${m.fixture.status.elapsed}'` : (m.fixture?.status?.short || ''),
-                league: m.league?.name || '',
-                country: m.league?.country || '',
-                isLive: !['FT', 'AOT', 'PEN', 'WO', 'ABD'].includes(m.fixture?.status?.short || m.status?.short)
-            }));
-            allMatches = allMatches.concat(matches);
-        } catch (err) { console.warn('Live scores error:', err); }
+            if (!data.errors || !Object.keys(data.errors).length) {
+                allMatches = (data.response || []).map(m => ({
+                    sport: '⚽ Fútbol',
+                    home: m.teams?.home?.name || '?',
+                    away: m.teams?.away?.name || '?',
+                    homeLogo: m.teams?.home?.logo || '',
+                    awayLogo: m.teams?.away?.logo || '',
+                    score: `${m.goals?.home ?? 0}-${m.goals?.away ?? 0}`,
+                    minute: m.fixture?.status?.elapsed ? `${m.fixture.status.elapsed}'` : (m.fixture?.status?.short || ''),
+                    league: m.league?.name || '',
+                    isLive: !['FT', 'AOT', 'PEN', 'WO', 'ABD'].includes(m.fixture?.status?.short || '')
+                }));
+            }
+        } catch (err) { console.warn('Live api-sports error:', err); }
+    }
+
+    // Fallback: football-data.org si api-sports no devolvió nada
+    if (!allMatches.length) {
+        try {
+            if (!authToken) await authenticate();
+            const today = new Date().toISOString().split('T')[0];
+            const res = await fetch(`/api/fd-org-proxy?dateFrom=${today}&dateTo=${today}`,
+                { headers: { 'Authorization': '***' + authToken } });
+            const data = await res.json();
+            if (data.response) {
+                allMatches = data.response
+                    .filter(m => ['IN_PLAY', 'PAUSED', 'HALFTIME'].includes(m.status))
+                    .map(m => ({
+                        sport: '⚽ Fútbol',
+                        home: m.homeTeam?.name || '?',
+                        away: m.awayTeam?.name || '?',
+                        homeLogo: '',
+                        awayLogo: '',
+                        score: `${m.score?.fullTime?.home ?? 0}-${m.score?.fullTime?.away ?? 0}`,
+                        minute: m.status === 'HALFTIME' ? 'HT' : (m.minute ? `${m.minute}'` : 'LIVE'),
+                        league: m.competition?.name || '',
+                        isLive: true
+                    }));
+            }
+        } catch (err) { console.warn('Live fd.org error:', err); }
     }
 
     if (refreshEl) refreshEl.textContent = new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: getTZ() });
@@ -1421,7 +1440,7 @@ async function loadLiveScores() {
         bySport[m.sport].push(m);
     });
 
-    let html = `<p class="text-xs text-zinc-500 mb-3">${allMatches.length} partidos en vivo · Auto-refresh 30s</p>`;
+    let html = `<p class="text-xs text-zinc-500 mb-3">${allMatches.length} partidos en vivo · Auto-refresh 60s</p>`;
 
     Object.entries(bySport).forEach(([sportName, matches]) => {
         html += `<p class="text-xs text-yellow-400 font-bold mb-2 mt-4">${sportName} (${matches.length})</p>`;
