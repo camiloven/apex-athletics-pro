@@ -573,8 +573,8 @@ async function fetchRealResults(sport, dates) {
     const apiKey = localStorage.getItem('sportsKey') || '';
     if (!apiKey) return { games: [], debug: 'Sin API key. Configúrala en ⚙️ Config' };
     if (!dates?.length) return { games: [], debug: 'Sin fechas' };
+    if (!canMakeRequest()) return { games: [], debug: `Límite diario alcanzado (${apiRequestCount}/${API_DAILY_LIMIT}). Se renueva mañana.` };
 
-    // Filtrar fechas: plan free solo permite hoy ±2 días
     const today = new Date();
     const minDate = new Date(today); minDate.setDate(today.getDate() - 2);
     const maxDate = new Date(today); maxDate.setDate(today.getDate() + 2);
@@ -584,9 +584,7 @@ async function fetchRealResults(sport, dates) {
         return dt >= minDate && dt <= maxDate;
     });
 
-    if (!validDates.length) {
-        return { games: [], debug: 'Fechas fuera de rango (plan free: hoy ±2 días). Fechas en Excel: ' + dates.join(', ') };
-    }
+    if (!validDates.length) return { games: [], debug: 'Fechas fuera de rango (hoy ±2 días)' };
 
     const endpoints = {
         soccer: 'https://v3.football.api-sports.io/fixtures?date=',
@@ -599,6 +597,8 @@ async function fetchRealResults(sport, dates) {
 
     let allGames = [];
     for (const date of validDates) {
+        if (!canMakeRequest()) break;
+        trackApiRequest();
         const url = (endpoints[sport] || endpoints.soccer) + date;
         try {
             const res = await fetch(url, { headers: { 'x-apisports-key': apiKey } });
@@ -606,13 +606,25 @@ async function fetchRealResults(sport, dates) {
             if (data.errors && Object.keys(data.errors).length) {
                 return { games: [], debug: 'API error: ' + JSON.stringify(data.errors) };
             }
-            if (data.response) allGames = allGames.concat(data.response);
+            if (data.response) {
+                allGames = allGames.concat(data.response);
+                // Extraer logos de los fixtures (gratis, sin requests adicionales)
+                data.response.forEach(g => {
+                    const homeName = g.teams?.home?.name;
+                    const awayName = g.teams?.away?.name;
+                    const homeLogo = g.teams?.home?.logo;
+                    const awayLogo = g.teams?.away?.logo;
+                    if (homeName && homeLogo) teamLogoCache[homeName.toLowerCase().trim()] = homeLogo;
+                    if (awayName && awayLogo) teamLogoCache[awayName.toLowerCase().trim()] = awayLogo;
+                });
+                localStorage.setItem('teamLogoCache', JSON.stringify(teamLogoCache));
+            }
         } catch (err) {
             return { games: [], debug: 'Error: ' + err.message };
         }
     }
 
-    return { games: allGames, debug: allGames.length + ' resultados de ' + validDates.length + ' fecha(s)' };
+    return { games: allGames, debug: `${allGames.length} resultados · ${apiRequestCount}/${API_DAILY_LIMIT} requests hoy` };
 }
 
 function findMatch(row, apiGames) {
@@ -989,7 +1001,7 @@ async function renderLive() {
     if (autoRefreshInterval) clearInterval(autoRefreshInterval);
     autoRefreshInterval = setInterval(() => {
         if (currentView === 'live') loadLiveScores();
-    }, 30000);
+    }, 60000); // Cada 60 segundos (era 30)
 }
 
 async function loadLiveScores() {
@@ -1000,15 +1012,15 @@ async function loadLiveScores() {
 
     const sports = [
         { key: 'football', label: '⚽ Fútbol', endpoint: 'v3.football.api-sports.io', path: 'fixtures?live=all' },
-        { key: 'basketball', label: '🏀 Básquetbol', endpoint: 'v1.basketball.api-sports.io', path: 'games?live=all' },
-        { key: 'tennis', label: '🎾 Tenis', endpoint: 'v1.tennis.api-sports.io', path: 'games?live=all' },
-        { key: 'hockey', label: '🏒 Hockey', endpoint: 'v1.hockey.api-sports.io', path: 'games?live=all' }
+        // Solo fútbol para ahorrar requests
     ];
 
     let allMatches = [];
 
     for (const sport of sports) {
+        if (!canMakeRequest()) break;
         try {
+            trackApiRequest();
             const res = await fetch(`https://${sport.endpoint}/${sport.path}`, { headers: { 'x-apisports-key': apiKey } });
             const data = await res.json();
             const matches = (data.response || []).map(m => ({
@@ -1073,20 +1085,18 @@ async function getTeamLogo(teamName) {
     if (!teamName) return null;
     const key = teamName.toLowerCase().trim();
     if (teamLogoCache[key]) return teamLogoCache[key];
+    if (!canMakeRequest()) return null;
 
     const apiKey = localStorage.getItem('sportsKey') || '';
     if (!apiKey) return null;
 
     try {
+        trackApiRequest();
         const res = await fetch(`https://v3.football.api-sports.io/teams?search=${encodeURIComponent(teamName)}`, { headers: { 'x-apisports-key': apiKey } });
         const data = await res.json();
         const team = data.response?.[0]?.team;
         if (team?.logo) {
             teamLogoCache[key] = team.logo;
-            // Guardar en localStorage cada 10 equipos nuevos
-            if (Object.keys(teamLogoCache).length % 10 === 0) {
-                localStorage.setItem('teamLogoCache', JSON.stringify(teamLogoCache));
-            }
             return team.logo;
         }
     } catch {}
@@ -1103,45 +1113,61 @@ async function loadTeamLogos() {
         if (away && !teamLogoCache[away.toLowerCase().trim()]) teams.add(away);
     });
 
-    // Cargar logos en paralelo (max 5 a la vez)
-    const teamArr = [...teams].slice(0, 20); // Limitar a 20 equipos por carga
-    const chunks = [];
-    for (let i = 0; i < teamArr.length; i += 5) {
-        chunks.push(teamArr.slice(i, i + 5));
+    if (!teams.length) { updateCardLogos(); return; }
+
+    // Solo 5 logos por carga para ahorrar requests
+    if (!canMakeRequest()) return;
+    const teamArr = [...teams].slice(0, 5);
+    for (const t of teamArr) {
+        if (!canMakeRequest()) break;
+        await getTeamLogo(t);
     }
 
-    for (const chunk of chunks) {
-        await Promise.all(chunk.map(t => getTeamLogo(t)));
-    }
-
-    // Guardar cache
     localStorage.setItem('teamLogoCache', JSON.stringify(teamLogoCache));
+    updateCardLogos();
+}
 
-    // Actualizar cards con logos
-    cards.forEach(card => {
+function updateCardLogos() {
+    document.querySelectorAll('.card[data-home]').forEach(card => {
         const home = card.dataset.home;
         const away = card.dataset.away;
         const homeLogo = home ? teamLogoCache[home.toLowerCase().trim()] : null;
         const awayLogo = away ? teamLogoCache[away.toLowerCase().trim()] : null;
-
         const homeLogoEl = card.querySelector('.team-logo-home');
         const awayLogoEl = card.querySelector('.team-logo-away');
-
-        if (homeLogoEl && homeLogo) {
-            homeLogoEl.src = homeLogo;
-            homeLogoEl.style.display = 'block';
-        }
-        if (awayLogoEl && awayLogo) {
-            awayLogoEl.src = awayLogo;
-            awayLogoEl.style.display = 'block';
-        }
+        if (homeLogoEl && homeLogo) { homeLogoEl.src = homeLogo; homeLogoEl.style.display = 'block'; }
+        if (awayLogoEl && awayLogo) { awayLogoEl.src = awayLogo; awayLogoEl.style.display = 'block'; }
     });
 }
 
 // ===== Team Form (últimos 5 resultados) =====
 let teamFormCache = {};
-let teamLogoCache = JSON.parse(localStorage.getItem('teamLogoCache') || '{}');
-let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+const API_DAILY_LIMIT = 90; // Dejar margen
+
+// ===== API Request Budget =====
+function trackApiRequest() {
+    const today = new Date().toISOString().split('T')[0];
+    const key = 'apiRequests_' + today;
+    apiRequestCount = parseInt(localStorage.getItem(key) || '0') + 1;
+    localStorage.setItem(key, apiRequestCount.toString());
+    // Limpiar días anteriores
+    Object.keys(localStorage).filter(k => k.startsWith('apiRequests_') && k !== key).forEach(k => localStorage.removeItem(k));
+}
+
+function canMakeRequest() {
+    return apiRequestCount < API_DAILY_LIMIT;
+}
+
+function getRemainingRequests() {
+    return Math.max(0, API_DAILY_LIMIT - apiRequestCount);
+}
+
+function showApiBudget() {
+    const remaining = getRemainingRequests();
+    if (remaining <= 10) {
+        showToast(`⚠️ Quedan ${remaining} requests de API hoy`, remaining <= 3);
+    }
+}
 
 // ===== Favorites =====
 function toggleFavorite(teamName, el) {
@@ -1168,17 +1194,19 @@ function renderFavStar(teamName) {
 
 async function getTeamForm(teamName) {
     if (teamFormCache[teamName]) return teamFormCache[teamName];
+    if (!canMakeRequest()) return null;
     const apiKey = localStorage.getItem('sportsKey') || '';
     if (!apiKey) return null;
 
     try {
-        // Buscar equipo
+        trackApiRequest();
         const searchRes = await fetch(`https://v3.football.api-sports.io/teams?search=${encodeURIComponent(teamName)}`, { headers: { 'x-apisports-key': apiKey } });
         const searchData = await searchRes.json();
         const team = searchData.response?.[0]?.team;
         if (!team) return null;
 
-        // Últimos 5 partidos
+        if (!canMakeRequest()) return null;
+        trackApiRequest();
         const fixturesRes = await fetch(`https://v3.football.api-sports.io/fixtures?team=${team.id}&last=5`, { headers: { 'x-apisports-key': apiKey } });
         const fixturesData = await fixturesRes.json();
         const fixtures = fixturesData.response || [];
@@ -1219,18 +1247,24 @@ function renderFormBadge(formData, teamName) {
 
 async function addFormToCards() {
     const cards = document.querySelectorAll('.card[data-home][data-away]');
+    // Solo cargar forma para 5 equipos nuevos (ahorrar requests)
+    let loaded = 0;
     for (const card of cards) {
+        if (loaded >= 5) break;
+        if (!canMakeRequest()) break;
         const home = card.dataset.home;
         const away = card.dataset.away;
         if (!home || !away) continue;
+        if (teamFormCache[home] && teamFormCache[away]) continue; // Ya cached
 
         const formDiv = card.querySelector('.form-container');
         if (!formDiv) continue;
 
         const [homeForm, awayForm] = await Promise.all([
-            getTeamForm(home),
-            getTeamForm(away)
+            teamFormCache[home] ? Promise.resolve(teamFormCache[home]) : getTeamForm(home),
+            teamFormCache[away] ? Promise.resolve(teamFormCache[away]) : getTeamForm(away)
         ]);
+        loaded++;
 
         let html = '';
         if (homeForm) html += `<div class="flex items-center gap-1 mb-1"><span class="text-[10px] text-zinc-500 w-16 truncate">${home}</span>${renderFormBadge(homeForm, home)}</div>`;
@@ -1238,6 +1272,7 @@ async function addFormToCards() {
 
         if (html) formDiv.innerHTML = html;
     }
+    showApiBudget();
 }
 
 // ===== Init =====
@@ -1315,6 +1350,7 @@ function startAutoRefresh(sport) {
 async function showH2H(home, away) {
     const apiKey = localStorage.getItem('sportsKey') || '';
     if (!apiKey) { showToast('Configura API-SPORTS KEY en Config', true); return; }
+    if (!canMakeRequest()) { showToast(`Límite diario alcanzado (${apiRequestCount}/${API_DAILY_LIMIT})`, true); return; }
 
     // Crear overlay
     const overlay = document.createElement('div');
@@ -1334,10 +1370,12 @@ async function showH2H(home, away) {
 
     try {
         // Buscar IDs de equipos
+        trackApiRequest();
         const searchRes = await fetch(`https://v3.football.api-sports.io/teams?search=${encodeURIComponent(home)}`, { headers: { 'x-apisports-key': apiKey } });
         const searchData = await searchRes.json();
         const homeTeam = searchData.response?.[0]?.team;
 
+        trackApiRequest();
         const searchRes2 = await fetch(`https://v3.football.api-sports.io/teams?search=${encodeURIComponent(away)}`, { headers: { 'x-apisports-key': apiKey } });
         const searchData2 = await searchRes2.json();
         const awayTeam = searchData2.response?.[0]?.team;
@@ -1348,6 +1386,7 @@ async function showH2H(home, away) {
         }
 
         // Buscar H2H
+        trackApiRequest();
         const h2hRes = await fetch(`https://v3.football.api-sports.io/fixtures/headtohead?h2h=${homeTeam.id}-${awayTeam.id}&last=5`, { headers: { 'x-apisports-key': apiKey } });
         const h2hData = await h2hRes.json();
         const fixtures = h2hData.response || [];
@@ -1483,6 +1522,8 @@ async function loadStandings(leagueName, chip) {
 
         for (const query of searches) {
             if (leagueData) break;
+            if (!canMakeRequest()) { container.innerHTML = '<p class="text-red-400 text-center p-4">Límite diario alcanzado</p>'; return; }
+            trackApiRequest();
             const searchRes = await fetch(`https://v3.football.api-sports.io/leagues?search=${encodeURIComponent(query)}`, { headers: { 'x-apisports-key': apiKey } });
             const searchData = await searchRes.json();
             const results = searchData.response || [];
@@ -1501,12 +1542,14 @@ async function loadStandings(leagueName, chip) {
         }
 
         const season = new Date().getFullYear();
+        trackApiRequest();
         const standRes = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueData.league.id}&season=${season}`, { headers: { 'x-apisports-key': apiKey } });
         const standData = await standRes.json();
         const standings = standData.response?.[0]?.league?.standings?.[0] || [];
 
         if (!standings.length) {
             // Intentar con season anterior
+            trackApiRequest();
             const standRes2 = await fetch(`https://v3.football.api-sports.io/standings?league=${leagueData.league.id}&season=${season - 1}`, { headers: { 'x-apisports-key': apiKey } });
             const standData2 = await standRes2.json();
             const standings2 = standData2.response?.[0]?.league?.standings?.[0] || [];
