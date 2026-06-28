@@ -173,8 +173,21 @@ function goToNext() {
         if (!isTokenValid()) authenticate().catch(()=>{});
         showApp(Object.keys(allData));
     } else {
-        document.getElementById('uploadScreen').classList.remove('hidden');
-        authenticate().then(()=>loadExcel()).catch(()=>{});
+        // Try loading from shared backend first
+        fetch('/api/predictions').then(r => r.json()).then(data => {
+            if (data.sports && Object.keys(data.sports).length > 0) {
+                allData = data.sports;
+                localStorage.setItem('apexData', JSON.stringify(allData));
+                if (!isTokenValid()) authenticate().catch(()=>{});
+                showApp(Object.keys(allData));
+            } else {
+                document.getElementById('uploadScreen').classList.remove('hidden');
+                authenticate().then(()=>loadExcel()).catch(()=>{});
+            }
+        }).catch(() => {
+            document.getElementById('uploadScreen').classList.remove('hidden');
+            authenticate().then(()=>loadExcel()).catch(()=>{});
+        });
     }
 }
 
@@ -1309,7 +1322,7 @@ function renderConfig() {
         </div>`;
     }
 
-    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(groqOK)} 🔑 GROQ API KEY</p><input type="text" id="inputGroq" placeholder="gsk_..." value="${escapeAttr(groqOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(geminiOK)} 🔑 GEMINI API KEY</p><input type="text" id="inputGemini" placeholder="AIza..." value="${escapeAttr(geminiOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(sportsOK)} ⚽ API-SPORTS KEY (resultados)</p><input type="text" id="inputSports" placeholder="Tu clave de api-sports.io" value="${escapeAttr(sportsOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(fdOK)} ⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="text" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${escapeAttr(fdOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
+    document.getElementById('mainContent').innerHTML=`<div class="p-4 view-fade-enter"><h2 class="text-xl font-extrabold text-yellow-400 mb-4">⚙️ Configuración</h2><div class="bg-zinc-900 rounded-2xl p-4 mb-4 border border-yellow-500/30 space-y-4"><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(groqOK)} 🔑 GROQ API KEY</p><input type="text" id="inputGroq" placeholder="gsk_..." value="${escapeAttr(groqOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(geminiOK)} 🔑 GEMINI API KEY</p><input type="text" id="inputGemini" placeholder="AIza..." value="${escapeAttr(geminiOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">🌍 ZONA HORARIA</p><p class="text-xs text-zinc-400 mb-2">Actual: ${tzLabel}</p><select id="inputTimezone" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"><option value="auto" ${userTimezone==='auto'?'selected':''}>📱 Hora del celular (${DETECTED_TZ})</option><option value="chile" ${userTimezone==='chile'?'selected':''}>🇨🇱 Hora de Chile (America/Santiago)</option></select></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(sportsOK)} ⚽ API-SPORTS KEY (resultados)</p><input type="text" id="inputSports" placeholder="Tu clave de api-sports.io" value="${escapeAttr(sportsOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div><div><p class="text-xs text-zinc-500 mb-2 font-bold">${si(fdOK)} ⚽ FOOTBALL-DATA.ORG KEY (fallback)</p><p class="text-xs text-zinc-600 mb-2">Gratis en football-data.org — Se usa cuando api-sports se agota</p><input type="text" id="inputFdOrg" placeholder="Tu clave de football-data.org" value="${escapeAttr(fdOK||'')}" class="w-full bg-zinc-800 text-white px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"></div>${debugHTML}<div class="flex items-center justify-between bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><div><p class="text-xs text-yellow-400 font-bold mb-1">🎨 Modo Claro</p><p class="text-xs text-zinc-500">Cambia la apariencia</p></div><div class="theme-toggle" onclick="toggleTheme()"><div class="toggle-dot"></div></div></div><div class="bg-zinc-800/50 rounded-xl p-3 border border-zinc-700"><p class="text-xs text-yellow-400 font-bold mb-2">☁️ Datos Compartidos</p><p class="text-xs text-zinc-500 mb-3">Sincroniza tus pronósticos para que otros usuarios los vean</p><button onclick="exportData()" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl text-sm transition mb-2">📤 Exportar datos (JSON)</button><button onclick="loadFromBackend()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-sm transition">📥 Cargar datos del servidor</button></div></div><button onclick="saveConfig()" class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">💾 Guardar</button></div>`;
 }
 
 function saveConfig() {
@@ -1326,6 +1339,59 @@ function saveConfig() {
     showToast('✅ Configuración guardada');
     switchView('pronos');
 }
+
+// ===== Backend Sync =====
+function exportData() {
+    const data = {
+        sports: allData,
+        exportedAt: new Date().toISOString(),
+        version: 1
+    };
+    const json = JSON.stringify(data, null, 2);
+    
+    // Try clipboard first
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(json).then(() => {
+            showToast('📋 Datos copiados al portapéguenlos en GitHub (data/predictions.json)');
+        }).catch(() => {
+            downloadJSON(json);
+        });
+    } else {
+        downloadJSON(json);
+    }
+}
+
+function downloadJSON(json) {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'predictions.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('📥 Archivo descargado — súbelo a GitHub como data/predictions.json');
+}
+
+async function loadFromBackend() {
+    try {
+        showToast('⏳ Cargando datos del servidor...');
+        const res = await fetch('/api/predictions');
+        if (!res.ok) throw new Error('Error del servidor');
+        const data = await res.json();
+        
+        if (data.sports && Object.keys(data.sports).length > 0) {
+            allData = data.sports;
+            localStorage.setItem('apexData', JSON.stringify(allData));
+            showToast('✅ Datos cargados: ' + Object.keys(allData).join(', '));
+            setTimeout(() => switchView('pronos'), 1000);
+        } else {
+            showToast('⚠️ No hay datos en el servidor', true);
+        }
+    } catch (err) {
+        showToast('❌ Error al cargar: ' + err.message, true);
+    }
+}
+
 
 // ===== Word =====
 function renderWord() {
