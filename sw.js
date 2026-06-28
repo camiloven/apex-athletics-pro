@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pronos-v3';
+const CACHE_NAME = 'pronos-v4';
 const ASSETS = [
     '/',
     '/index.html',

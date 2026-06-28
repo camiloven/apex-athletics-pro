@@ -8,6 +8,7 @@ let allData = {}, currentSport = null, currentView = 'pronos';
 let leagueColorMap = {}, resultsCache = {}, authToken = null;
 let betminesImgs = [], forebetImgs = [], wordContents = {};
 let analisisSelectedMatches = [];
+let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
 let countdownInterval = null;
 let autoRefreshInterval = null;
 let currentTheme = localStorage.getItem("theme") || "dark";
