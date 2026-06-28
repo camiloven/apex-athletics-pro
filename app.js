@@ -506,13 +506,31 @@ function updateCountdowns() {
 
 // ===== API =====
 async function fetchRealResults(sport, dates) {
-    if (!authToken) { showToast('No autenticado', true); return []; }
+    // Asegurar token válido
+    if (!isTokenValid()) {
+        try { await authenticate(); } catch { showToast('Error de autenticación', true); return []; }
+    }
     if (!dates?.length) return [];
     try {
         const res = await fetch(`/api/sports-proxy?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(dates[0])}`, { headers:{'Authorization':`Bearer ${authToken}`} });
-        if (!res.ok) { if(res.status===401){authToken=null;localStorage.removeItem('authToken');showToast('Sesión expirada',true);} return []; }
+        if (!res.ok) {
+            if(res.status===401) {
+                // Token expirado, renovar y reintentar
+                try {
+                    await authenticate();
+                    const res2 = await fetch(`/api/sports-proxy?sport=${encodeURIComponent(sport)}&date=${encodeURIComponent(dates[0])}`, { headers:{'Authorization':`Bearer ${authToken}`} });
+                    if (res2.ok) return (await res2.json()).response||[];
+                } catch {}
+            }
+            showToast('Error al obtener resultados', true);
+            return [];
+        }
         return (await res.json()).response||[];
-    } catch { return []; }
+    } catch (err) {
+        console.error('Error fetching results:', err);
+        showToast('Error de conexión', true);
+        return [];
+    }
 }
 
 function findMatch(row, apiGames) {
