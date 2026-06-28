@@ -753,6 +753,9 @@ async function renderResultados(sport) {
             apiGames = fdResult.games;
             apiSource = 'football-data.org';
             apiResult.debug = fdResult.debug;
+        } else {
+            // Mostrar debug de ambas APIs
+            apiResult.debug = `api-sports: ${apiResult.debug} | football-data.org: ${fdResult.debug}`;
         }
     }
     
