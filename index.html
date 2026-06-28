@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pronos Camiloven</title>
     <meta name="description" content="Plataforma Premium de Pronósticos Deportivos con IA">
+    <meta name="theme-color" content="#09090b">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -15,21 +18,26 @@
 <!-- ===== Intro Screen ===== -->
 <div class="hero" id="introScreen">
     <video autoplay loop muted playsinline><source src="intro-video.mp4" type="video/mp4"></video>
+    <canvas id="particles-canvas"></canvas>
     <div class="text-center relative z-10 px-6">
-        <h1 class="text-7xl font-bold tracking-tighter neon">PRONOS CAMILOVEN</h1>
-        <p class="text-yellow-400 mt-4 text-xl">by camiloven</p>
-        <button onclick="goToNext()" class="mt-20 bg-yellow-400 text-black px-16 py-7 rounded-3xl text-2xl font-bold hover:bg-yellow-300 transition">Entrar</button>
+        <h1 id="heroTitle" class="text-7xl font-extrabold tracking-tighter neon title-animate">PRONOS CAMILOVEN</h1>
+        <p class="text-yellow-400 mt-4 text-xl font-medium opacity-0" id="heroSub" style="animation: fadeInUp 0.6s 1s forwards">by camiloven</p>
+        <button onclick="goToNext()" id="btnEntrar"
+            class="btn-glow mt-20 bg-yellow-400 text-black px-16 py-7 rounded-3xl text-2xl font-extrabold opacity-0"
+            style="animation: fadeInUp 0.6s 1.4s forwards">
+            Entrar
+        </button>
     </div>
 </div>
 
-<!-- ===== Upload Screen (sin contraseña) ===== -->
+<!-- ===== Upload Screen ===== -->
 <div id="uploadScreen" class="hidden min-h-screen flex items-center justify-center px-6 bg-zinc-950">
-    <div class="text-center max-w-md w-full">
+    <div class="text-center max-w-md w-full view-fade-enter">
         <div class="text-5xl mb-6">📊</div>
-        <h2 class="text-3xl font-bold mb-2">Cargar Pronósticos</h2>
+        <h2 class="text-3xl font-extrabold mb-2">Cargar Pronósticos</h2>
         <p class="text-zinc-500 text-sm mb-6">Sube tu archivo Excel (.xlsx) para comenzar</p>
         <button onclick="loadExcel()"
-            class="w-full py-5 bg-yellow-400 text-black font-bold rounded-3xl text-xl hover:bg-yellow-300 transition">
+            class="btn-glow w-full py-5 bg-yellow-400 text-black font-extrabold rounded-3xl text-xl hover:bg-yellow-300 transition">
             📂 Seleccionar Archivo
         </button>
     </div>
@@ -40,7 +48,7 @@
     <!-- Header -->
     <div class="sticky top-0 bg-zinc-900/95 backdrop-blur border-b border-zinc-800 z-50">
         <div class="flex justify-between items-center px-4 pt-4 pb-2">
-            <h1 class="text-xl font-bold neon">PRONOS CAMILOVEN</h1>
+            <h1 class="text-xl font-extrabold neon">PRONOS CAMILOVEN</h1>
             <button onclick="goToUpload()" class="text-yellow-400 text-sm bg-zinc-800 px-3 py-1 rounded-full hover:bg-zinc-700 transition">
                 ↑ Archivo
             </button>
@@ -52,17 +60,116 @@
     <div id="mainContent" class="flex-1 pb-32"></div>
 
     <!-- Bottom Nav -->
-    <div class="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50">
+    <div class="fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 z-50">
         <div class="flex">
-            <button onclick="switchView('pronos')" id="navPronos" class="nav-tab active text-yellow-400">📋 Pronos</button>
-            <button onclick="switchView('analisis')" id="navAnalisis" class="nav-tab text-zinc-400">🎯 Análisis</button>
-            <button onclick="switchView('fuentes')" id="navFuentes" class="nav-tab text-zinc-400">🔗 Fuentes</button>
-            <button onclick="switchView('config')" id="navConfig" class="nav-tab text-zinc-400">⚙️ Config</button>
-            <button onclick="switchView('word')" id="navWord" class="nav-tab text-zinc-400">📄 Word</button>
+            <button onclick="switchView('pronos')" id="navPronos" class="nav-tab active text-yellow-400">
+                <span class="nav-icon">📋</span>Pronos
+            </button>
+            <button onclick="switchView('analisis')" id="navAnalisis" class="nav-tab text-zinc-400">
+                <span class="nav-icon">🎯</span>Análisis
+            </button>
+            <button onclick="switchView('fuentes')" id="navFuentes" class="nav-tab text-zinc-400">
+                <span class="nav-icon">🔗</span>Fuentes
+            </button>
+            <button onclick="switchView('config')" id="navConfig" class="nav-tab text-zinc-400">
+                <span class="nav-icon">⚙️</span>Config
+            </button>
+            <button onclick="switchView('word')" id="navWord" class="nav-tab text-zinc-400">
+                <span class="nav-icon">📄</span>Word
+            </button>
         </div>
     </div>
 </div>
 
 <script src="app.js"></script>
+<script>
+// ===== Animación título letra por letra =====
+(function() {
+    const title = document.getElementById('heroTitle');
+    const text = title.textContent;
+    title.innerHTML = '';
+    [...text].forEach((char, i) => {
+        const span = document.createElement('span');
+        span.textContent = char === ' ' ? '\u00A0' : char;
+        span.style.animationDelay = (i * 0.05) + 's';
+        title.appendChild(span);
+    });
+})();
+
+// ===== Partículas doradas =====
+(function() {
+    const canvas = document.getElementById('particles-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    let animId;
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    class Particle {
+        constructor() {
+            this.reset();
+        }
+        reset() {
+            this.x = Math.random() * canvas.width;
+            this.y = Math.random() * canvas.height;
+            this.size = Math.random() * 2.5 + 0.5;
+            this.speedY = -(Math.random() * 0.5 + 0.1);
+            this.speedX = (Math.random() - 0.5) * 0.3;
+            this.opacity = Math.random() * 0.6 + 0.1;
+            this.life = 0;
+            this.maxLife = Math.random() * 300 + 200;
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            this.life++;
+            if (this.life > this.maxLife || this.y < -10) {
+                this.reset();
+                this.y = canvas.height + 10;
+            }
+        }
+        draw() {
+            const fade = this.life < 30 ? this.life / 30 :
+                         this.life > this.maxLife - 30 ? (this.maxLife - this.life) / 30 : 1;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(234, 179, 8, ${this.opacity * fade})`;
+            ctx.fill();
+            // Glow
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(234, 179, 8, ${this.opacity * fade * 0.15})`;
+            ctx.fill();
+        }
+    }
+
+    for (let i = 0; i < 60; i++) {
+        particles.push(new Particle());
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+            p.update();
+            p.draw();
+        });
+        animId = requestAnimationFrame(animate);
+    }
+    animate();
+
+    // Detener partículas al salir del intro
+    const observer = new MutationObserver(() => {
+        if (document.getElementById('introScreen').style.display === 'none') {
+            cancelAnimationFrame(animId);
+        }
+    });
+    observer.observe(document.getElementById('introScreen'), { attributes: true, attributeFilter: ['style'] });
+})();
+</script>
 </body>
 </html>
